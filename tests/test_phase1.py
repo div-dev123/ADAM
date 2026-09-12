@@ -1,32 +1,59 @@
-import time
+from fastapi.testclient import TestClient
 
-from embeddings import SentenceTransformerEmbedder
-from memory import Memory
-from memory_store import InMemoryMemoryStore
-from retrieval import semantic_search
+from app.main import app
+from app.memory.storage import InMemoryStorage
+from app.retrieval.retrieval import RetrievalService
 
 
-def test_semantic_search_retrieves_relevant_memory():
-    embedder = SentenceTransformerEmbedder()
-    store = InMemoryMemoryStore()
-    now = time.time()
+class FakeEmbeddings:
+    vectors = {
+        "The project is called ADAM and focuses on adaptive memory management.": [1.0, 0.0],
+        "ADAM uses semantic memory retrieval to retrieve relevant information.": [0.8, 0.2],
+        "What is ADAM?": [0.95, 0.05],
+    }
 
-    store.add(Memory(
-        id="java-preference",
-        content="I prefer Java for solving DSA problems.",
-        embedding=embedder.embed("I prefer Java for solving DSA problems."),
-        timestamp=now,
-    ))
-    store.add(Memory(
-        id="travel-plan",
-        content="I am planning a weekend trip to the coast.",
-        embedding=embedder.embed("I am planning a weekend trip to the coast."),
-        timestamp=now,
-    ))
+    def encode(self, text):
+        return self.vectors[text]
 
-    results = semantic_search(
-        store, embedder, "Which language do I use for algorithms?", top_k=1
+
+def test_phase1_semantic_retrieval():
+    service = RetrievalService(InMemoryStorage(), FakeEmbeddings())
+    service.store_memory(
+        "user-1",
+        "The project is called ADAM and focuses on adaptive memory management.",
+    )
+    service.store_memory(
+        "user-1",
+        "ADAM uses semantic memory retrieval to retrieve relevant information.",
     )
 
-    assert results[0][1].id == "java-preference"
-    assert results[0][0] > 0.3
+    results = service.search("user-1", "What is ADAM?", top_k=2)
+
+    assert len(results) == 2
+    assert results[0]["memory"].content.startswith("The project is called ADAM")
+    assert results[0]["similarity"] > results[1]["similarity"]
+
+
+def test_api_health_and_memory_flow():
+    app.state.retrieval = RetrievalService(InMemoryStorage(), FakeEmbeddings())
+    with TestClient(app) as client:
+        health = client.get("/health")
+        assert health.json() == {"status": "ok", "phase": 1}
+
+        stored = client.post(
+            "/memories",
+            json={
+                "user_id": "user-1",
+                "content": "The project is called ADAM and focuses on adaptive memory management.",
+            },
+        )
+        assert stored.status_code == 201
+
+        searched = client.post(
+            "/memories/search",
+            json={"user_id": "user-1", "query": "What is ADAM?", "top_k": 1},
+        )
+        assert searched.status_code == 200
+        assert searched.json()["results"][0]["memory"]["content"].startswith(
+            "The project is called ADAM"
+        )

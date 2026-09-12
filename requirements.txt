@@ -1,7 +1,9 @@
 fastapi
 uvicorn
 pymongo
+dnspython
 sentence-transformers
 pandas
 scikit-learn
 pytest
+httpx

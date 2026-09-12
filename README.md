@@ -1,33 +1,41 @@
 # ADAM
 
-ADAM is a research prototype for managing memory in long-running LLM
-conversations. The project is being built incrementally. The repository
-currently contains **Phase 1 only**:
+ADAM is a lightweight research prototype for memory management in LLM-based conversational systems.
+
+The repository currently implements **Phase 1 only**:
 
 ```text
-Memory model -> Storage -> Embeddings -> Semantic retrieval
+Text message -> SentenceTransformer embedding -> Memory storage -> Semantic retrieval
 ```
 
-Later phases will add importance scoring, memory tiers, consolidation,
-forgetting, query drift, ranking signals, and evaluation.
+Later phases will add importance scoring, memory tiers, consolidation, forgetting, query drift, multi-signal ranking, and context assembly. They are intentionally not implemented yet.
 
-## Technology
+## Phase 1 capabilities
 
-- Python 3.12
-- SentenceTransformers with `all-MiniLM-L6-v2` embeddings
-- MongoDB Atlas for persistent storage
-- FastAPI and Uvicorn for the future API layer
-- Ollama with `qwen2.5:3b` for local conversation generation
-- Pytest for tests
+- Store a text memory for a user.
+- Generate a local embedding with `all-MiniLM-L6-v2`.
+- Persist memories in MongoDB Atlas when `MONGODB_URI` is configured.
+- Use an in-memory backend for tests and local development without Atlas.
+- Retrieve a user's memories by cosine similarity.
+- Expose storage and retrieval through FastAPI.
+- Track `memory_id`, `user_id`, `content`, `embedding`, `created_at`, `last_accessed`, and `access_count`.
 
-The current Phase 1 retrieval test uses the local in-memory store, so it does
-not require MongoDB credentials or a running database.
+The LLM and Ollama are not required for Phase 1 retrieval. Ollama is prepared for later conversation-generation phases.
+
+## Requirements
+
+- macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
+- Python 3.10 or newer
+- MongoDB Atlas account for persistent storage
+- Ollama installed locally for later phases
+
+No local MongoDB, Redis, Docker, or microservices are used.
 
 ## Setup
 
-### 1. Create a virtual environment
+Run these commands from the repository root.
 
-From the project directory:
+### 1. Create a virtual environment
 
 ```bash
 python3 -m venv .venv
@@ -35,8 +43,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-On macOS with Homebrew Python, `python3` may be replaced with
-`/opt/homebrew/bin/python3`.
+VS Code: select `.venv/bin/python` as the project interpreter.
 
 ### 2. Install Python dependencies
 
@@ -44,43 +51,45 @@ On macOS with Homebrew Python, `python3` may be replaced with
 python -m pip install -r requirements.txt
 ```
 
-This installs FastAPI, Uvicorn, PyMongo, SentenceTransformers, pandas,
-scikit-learn, and Pytest. The first embedding run downloads
-`all-MiniLM-L6-v2` from Hugging Face and caches it locally. It is a lightweight
-384-dimensional model suitable for an M2 MacBook Air with 8 GB unified memory.
+The dependencies include FastAPI, Uvicorn, PyMongo, `dnspython` for Atlas SRV URLs, SentenceTransformers, Pytest, pandas, and scikit-learn.
+
+The first real embedding call downloads and caches `all-MiniLM-L6-v2`. This is a lightweight 384-dimensional model suitable for the target MacBook.
 
 ### 3. Configure MongoDB Atlas
 
-Create a MongoDB Atlas cluster and database user, allow your development IP in
-Atlas Network Access, and copy the Python connection string. Then create a
-local `.env` file from [`.env.example`](.env.example), replacing the
-placeholders.
-
-The current code reads `MONGODB_URI` from the shell environment. Export it
-before running code:
+Create an Atlas cluster and database user, then allow your development IP under Atlas Network Access. Copy the Atlas Python connection string and export it in the terminal:
 
 ```bash
 export MONGODB_URI='mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority'
 ```
 
-If `MONGODB_URI` is not set, ADAM automatically uses the in-memory store. This
-is useful for local tests and does not persist data between processes.
+Optional settings:
 
-### 4. Install and configure Ollama
+```bash
+export MONGODB_DATABASE='adam_memory'
+export MONGODB_COLLECTION='memories'
+export EMBEDDING_MODEL='all-MiniLM-L6-v2'
+```
 
-If Ollama is not installed:
+Do not commit credentials. The repository ignores `.env`; for persistent local configuration, create `.env` and load/export its values in your shell.
+
+If `MONGODB_URI` is not set, the API uses the in-memory backend. That is useful for tests, but data disappears when the process stops.
+
+### 4. Set up Ollama for later phases
+
+Ollama is not needed to run Phase 1. If it is not installed:
 
 ```bash
 brew install ollama
 ```
 
-Start the local Ollama server in a separate terminal:
+Start the server in a separate terminal:
 
 ```bash
 ollama serve
 ```
 
-In another terminal, download the conversation model used by this project:
+Download the lightweight conversation model selected for this project:
 
 ```bash
 ollama pull qwen2.5:3b
@@ -89,48 +98,83 @@ ollama pull qwen2.5:3b
 Verify it:
 
 ```bash
-ollama list
 ollama run qwen2.5:3b "Explain conversational memory in one sentence."
 ```
 
-`qwen2.5:3b` is intentionally used instead of a larger model because this
-project targets an M2 MacBook Air with 8 GB RAM. SentenceTransformers handles
-embeddings separately; Ollama is reserved for conversation generation in later
-phases.
+`qwen2.5:3b` is selected for the M2/8 GB target. Do not run it simultaneously with unnecessary larger local models.
 
-## Run Phase 1
+## Run tests
 
-Run the semantic retrieval test:
+Activate the environment, then run:
 
 ```bash
-USE_TF=0 python -m pytest -q tests/test_phase1.py
+source .venv/bin/activate
+USE_TF=0 python -m pytest -q
 ```
 
-`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras
-installation. ADAM uses PyTorch for SentenceTransformers and does not need
-TensorFlow.
+`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras installation. ADAM uses PyTorch for SentenceTransformers and does not need TensorFlow.
 
-The test stores two memories, asks an algorithms-related query, and verifies
-that the Java preference is retrieved before an unrelated travel memory.
+The tests use fake embeddings and the in-memory backend, so they do not require MongoDB, Hugging Face network access, or Ollama.
 
-## Project layout
+## Run the API
 
-| path | purpose |
-|---|---|
-| `memory.py` | `Memory` data model and MongoDB document conversion |
-| `memory_store.py` | in-memory store and MongoDB Atlas store |
-| `embeddings.py` | lazy SentenceTransformer embedding service |
-| `retrieval.py` | Phase 1 semantic retrieval entry point |
-| `tests/test_phase1.py` | relevant-memory retrieval test |
-| `requirements.txt` | Python dependencies |
-| `.env.example` | MongoDB environment variable template |
+```bash
+source .venv/bin/activate
+USE_TF=0 uvicorn app.main:app --reload
+```
 
-## Phase 1 design decisions
+The API runs at `http://127.0.0.1:8000`. Interactive documentation is available at `http://127.0.0.1:8000/docs`.
 
-- Memory persistence is behind a small store interface so local tests do not
-  require Atlas.
-- MongoDB stores the memory content and embedding together.
-- Similarity ranking is calculated in Python for transparency during research.
-- MongoDB Atlas Vector Search can be evaluated later after the basic behavior
-  and metrics are stable.
-- No Redis, Docker, microservices, or large local models are used.
+### Store a memory
+
+```bash
+curl -X POST http://127.0.0.1:8000/memories \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"user-1","content":"The project is called ADAM and focuses on adaptive memory management."}'
+```
+
+### Store another memory
+
+```bash
+curl -X POST http://127.0.0.1:8000/memories \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"user-1","content":"ADAM uses semantic memory retrieval to retrieve relevant information."}'
+```
+
+### Search memories
+
+```bash
+curl -X POST http://127.0.0.1:8000/memories/search \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"user-1","query":"What is ADAM?","top_k":5}'
+```
+
+The response contains ranked memories and their cosine similarity scores. Each returned memory also has updated `last_accessed` and `access_count` values.
+
+## Project structure
+
+```text
+ADAM/
+├── app/
+│   ├── main.py                    # FastAPI application and endpoints
+│   ├── config.py                  # Environment-backed settings
+│   ├── memory/
+│   │   ├── models.py              # Phase 1 Memory dataclass
+│   │   └── storage.py             # MongoDB Atlas and test storage
+│   └── retrieval/
+│       ├── embeddings.py          # SentenceTransformer wrapper
+│       └── retrieval.py            # Store and search orchestration
+├── tests/
+│   └── test_phase1.py             # Storage, retrieval, and API tests
+├── requirements.txt
+├── .env.example
+└── README.md
+```
+
+## Design notes
+
+- The storage interface keeps MongoDB-specific code separate from retrieval logic.
+- Similarity ranking is calculated in Python for transparent research experiments.
+- MongoDB stores embeddings as arrays alongside memory metadata.
+- The model is loaded lazily, so importing the API does not immediately load PyTorch.
+- Phase 1 has no importance, tier, consolidation, forgetting, drift, ranking-weight, or LLM-response logic.
