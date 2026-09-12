@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.pyc
+
+# macOS and editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Test and coverage output
+.coverage
+htmlcov/
+coverage.xml

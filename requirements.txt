@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pymongo
+sentence-transformers
+pandas
+scikit-learn
+pytest
