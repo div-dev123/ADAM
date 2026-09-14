@@ -2,74 +2,78 @@
 
 ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems.
 
-This repository currently implements **Phase 1, Phase 2, and Phase 3**:
+The repository currently implements the basic semantic memory system and **Phase 2: importance scoring plus memory lifecycle management**.
 
 ```text
-User text -> embedding -> importance score -> tier assignment -> consolidation -> SQLite storage
-Query -> embedding -> cosine retrieval -> top-k memories
+Selected user information
+    -> embedding
+    -> intrinsic importance score
+    -> initial lifecycle placement
+    -> SQLite storage
+
+Query
+    -> embedding
+    -> cosine retrieval
+    -> top-k memories
 ```
 
-Phase 2 adds a transparent importance and tier baseline. Phase 3 adds
-LLM-assisted consolidation using Ollama. These are research baselines and do
-not implement the complete adaptive ADAM lifecycle.
+## Core distinction
 
-## Phase 1 implements
+ADAM keeps two concepts separate:
 
-- Memory creation from user text.
+```text
+importance_score = estimated intrinsic value of the memory (0-1)
+tier             = current storage/lifecycle state
+```
+
+Importance is a property of the information. Tier is a mutable state that can
+change later because of age, usage, relevance, or compression. Moving a memory
+between tiers does not change its importance score unless a later phase
+explicitly recalculates it.
+
+## Implemented behavior
+
 - Lightweight SentenceTransformer embeddings.
 - Local SQLite persistence at `data/adam.db`.
-- User-scoped semantic retrieval using cosine similarity.
-- Configurable top-k retrieval.
-- `last_accessed` and `access_count` updates when memories are returned.
-- A small FastAPI API for storing and retrieving memories.
-- A reproducible heuristic importance score in the range 0-1.
-- Configurable `WORKING`, `SHORT_TERM`, `LONG_TERM`, and `ARCHIVE` assignment.
-- Persistence and API responses for `importance_score` and `tier`.
-- Semantic candidate retrieval before consolidation, bounded by configuration.
-- Structured `DUPLICATE`, `RELATED`, `CONTRADICTORY`, and `NEW/UNRELATED` decisions.
-- Consolidation audit events in SQLite.
+- User-scoped semantic retrieval using cosine similarity only.
+- Transparent heuristic importance scoring in the range 0-1.
+- Initial placement into `WORKING`, `SHORT_TERM`, or `ARCHIVE`.
+- Configurable lifecycle transitions to `LONG_TERM` and `ARCHIVE`.
+- Lifecycle metadata: `compression_level`, `last_accessed`, `access_count`,
+  `created_at`, and `updated_at`.
+- FastAPI endpoints for storing and retrieving memories.
 
-Phase 3 does **not** implement forgetting, query drift, adaptive scope,
-multi-signal ranking, context compression, LLM extraction, or final LLM response
-generation.
+ADAM memories represent selected information extracted from conversations. They
+are not intended to be a copy of every raw conversation message. Conversation
+history and ADAM memory should remain separate abstractions in future phases.
 
-## Architecture
+## Current lifecycle policy
 
-```text
-POST /memory
-    -> EmbeddingService
-  -> HeuristicImportanceScorer
-  -> TierAssigner
-  -> ConsolidationService
-      -> bounded semantic candidate retrieval
-      -> structured Ollama decision
-    -> Memory object
-    -> SQLiteStorage.save_memory
-    -> data/adam.db
+Initial placement may use importance, but it is not a permanent mapping:
 
-POST /retrieve
-    -> EmbeddingService
-    -> SQLiteStorage.get_memories
-    -> cosine similarity
-    -> top-k results
-    -> access metadata update
-```
+- Low-value memories can enter `ARCHIVE` directly.
+- Medium-value memories enter `SHORT_TERM`.
+- High-value memories enter `WORKING` so they are active when newly created.
 
-The storage layer owns SQLite and SQL statements. The importance, tier, LLM, and
-consolidation modules are independent components. The retrieval layer still
-ranks using semantic similarity only; importance, tier, and access metadata are
-not retrieval signals yet. This separation makes each component easy to replace
-or ablate in later experiments.
+Later transitions use lifecycle metadata independently of importance:
+
+- An older, accessed `WORKING` memory can move to `LONG_TERM`.
+- An older or compressed `SHORT_TERM` memory can move to `ARCHIVE`.
+- `LONG_TERM` and `ARCHIVE` remain stable until a future policy changes them.
+
+The policy is implemented in `app/memory/tiers.py` and is configurable for
+experiments. No forgetting, compression operation, or automatic lifecycle pass
+is implemented yet; `compression_level` is stored as metadata for the next
+phases.
 
 ## Requirements
 
 - Python 3.10 or newer
 - macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
 - No MongoDB, Redis, Docker, or external database
-- Ollama with `qwen2.5:3b` for the Phase 3 write path
 
-Tests inject a deterministic fake client and do not require a running Ollama
-server.
+Ollama is not required for the current phase. LLM-assisted consolidation is
+deferred to a later phase.
 
 ## Setup
 
@@ -91,35 +95,22 @@ In VS Code, select `.venv/bin/python` as the project interpreter.
 python -m pip install -r requirements.txt
 ```
 
-The project uses:
+The project uses FastAPI and Uvicorn for the API, SentenceTransformers with
+`all-MiniLM-L6-v2` for embeddings, NumPy for numerical operations, and Pytest
+with HTTPX for tests.
 
-- FastAPI and Uvicorn for the API.
-- SentenceTransformers for embeddings.
-- `all-MiniLM-L6-v2` as the default lightweight embedding model.
-- NumPy for the embedding library's numerical operations.
-- Pytest and HTTPX for tests and API testing.
+The first real embedding call may download and cache `all-MiniLM-L6-v2`. It
+produces 384-dimensional vectors and is appropriate for the target laptop.
 
-The first real embedding call may download and cache `all-MiniLM-L6-v2` from Hugging Face. It produces 384-dimensional vectors and is appropriate for development on the target laptop.
-
-### 3. Install Ollama
-
-Ollama is the current local experimental provider for consolidation:
+Lifecycle policy settings can be overridden without changing code:
 
 ```bash
-brew install ollama
-ollama serve
-ollama pull qwen2.5:3b
-```
-
-`qwen2.5:3b` is the selected lightweight model for the M2/8 GB target.
-
-Optional Phase 3 settings:
-
-```bash
-export OLLAMA_HOST='http://127.0.0.1:11434'
-export OLLAMA_MODEL='qwen2.5:3b'
-export CONSOLIDATION_CANDIDATE_LIMIT='3'
-export CONSOLIDATION_MIN_SIMILARITY='0.35'
+export INITIAL_ARCHIVE_THRESHOLD='0.20'
+export INITIAL_LONG_TERM_THRESHOLD='0.70'
+export WORKING_TO_LONG_TERM_DAYS='7'
+export WORKING_TO_LONG_TERM_MIN_ACCESSES='1'
+export SHORT_TERM_TO_ARCHIVE_DAYS='30'
+export ARCHIVE_COMPRESSION_LEVEL='1'
 ```
 
 ## Run tests
@@ -129,9 +120,12 @@ source .venv/bin/activate
 USE_TF=0 python -m pytest -q
 ```
 
-`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras installation. ADAM uses PyTorch through SentenceTransformers and does not need TensorFlow.
+`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras
+installation. ADAM uses PyTorch through SentenceTransformers and does not need
+TensorFlow.
 
-The tests use a deterministic embedding double, so they do not download a model or require an external service.
+Tests use deterministic embedding doubles, so they do not require a downloaded
+model or external services.
 
 ## Run the API
 
@@ -140,45 +134,32 @@ source .venv/bin/activate
 USE_TF=0 python -m uvicorn app.main:app --reload
 ```
 
-The API is available at `http://127.0.0.1:8000`. FastAPI documentation is at `http://127.0.0.1:8000/docs`.
+The API is available at `http://127.0.0.1:8000` and interactive documentation
+is available at `http://127.0.0.1:8000/docs`.
 
-### Health check
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-### Store memories
+### Store a memory
 
 ```bash
 curl -X POST http://127.0.0.1:8000/memory \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","content":"The project is called ADAM and focuses on adaptive memory management."}'
+  -d '{"user_id":"user-1","content":"My goal is to pass the AWS certification."}'
 ```
 
-```bash
-curl -X POST http://127.0.0.1:8000/memory \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","content":"ADAM uses semantic memory retrieval to find relevant information."}'
-```
-
-```bash
-curl -X POST http://127.0.0.1:8000/memory \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","content":"The weather today is sunny."}'
-```
+The response includes `importance_score`, `tier`, `compression_level`,
+`created_at`, `updated_at`, `last_accessed`, and `access_count`.
 
 ### Retrieve memories
 
 ```bash
 curl -X POST http://127.0.0.1:8000/retrieve \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","query":"What is ADAM?","top_k":2}'
+  -d '{"user_id":"user-1","query":"What is my goal?","top_k":5}'
 ```
 
-The response contains memories ranked by cosine similarity. The returned memories also report updated `last_accessed` and `access_count` values.
+Retrieval ranks only by cosine similarity. Importance, tier, recency, and
+access count are intentionally not ranking signals yet.
 
-## SQLite storage design
+## SQLite storage
 
 The database is created automatically at:
 
@@ -186,13 +167,13 @@ The database is created automatically at:
 data/adam.db
 ```
 
-The `memories` table stores the required metadata, `importance_score`, `tier`,
-and the embedding as JSON text. JSON was chosen because it is readable, uses
-only the Python standard library, works with SQLite without extensions, and can
-be converted later to a vector-database representation. Similarity is
-calculated in Python for this small research baseline.
+The `memories` table stores the content, embedding, user ID, timestamps, access
+metadata, importance score, tier, and compression level. Embeddings are stored
+as JSON text because the representation is readable, works without SQLite
+extensions, and can later be migrated to a vector database.
 
-The database file is ignored by Git through `data/*.db`. No credentials or external database service are needed.
+Existing Phase 1/2 databases are migrated automatically with defaults for new
+lifecycle columns. The database is ignored by Git through `data/*.db`.
 
 ## Project structure
 
@@ -200,91 +181,42 @@ The database file is ignored by Git through `data/*.db`. No credentials or exter
 ADAM/
 ├── app/
 │   ├── main.py                    # FastAPI endpoints
-│   ├── config.py                  # Database and model configuration
+│   ├── config.py                  # Database, scoring, and lifecycle settings
 │   ├── memory/
-│   │   ├── models.py              # Memory dataclass and SQLite row conversion
-│   │   ├── storage.py             # SQLite schema and persistence functions
-│   │   ├── importance.py          # Configurable heuristic scoring
-│   │   └── tiers.py               # Configurable tier assignment
-│   └── retrieval/
+│   │   ├── models.py              # Memory model and SQLite row conversion
+│   │   ├── storage.py             # SQLite schema and persistence
+│   │   ├── importance.py          # Replaceable heuristic scorer
+│   │   └── tiers.py               # Independent lifecycle policy
+│   ├── retrieval/
 │       ├── embeddings.py          # Replaceable embedding interface
-│       ├── retrieval.py            # Semantic retrieval and write orchestration
-│       └── similarity.py           # Cosine similarity primitive
-│   └── llm/
-│       └── client.py               # LLMClient and OllamaClient
-├── data/                          # Local runtime data; SQLite DB is ignored
+│       ├── retrieval.py            # Write and retrieval orchestration
+│       └── similarity.py           # Cosine similarity
+├── data/                          # Local runtime data; database is ignored
 ├── tests/
-│   └── test_phase1.py             # Phase 1-3 unit/API tests
+│   └── test_phase1.py             # Phase 1 and lifecycle tests
 ├── requirements.txt
 ├── README.md
 └── .gitignore
 ```
 
-## Limitations
+## Importance scoring
 
-- SQLite retrieval scans a user's memories in Python, so it is intended for a prototype and modest datasets.
-- The default model is loaded lazily and requires local model-cache space.
-- There is no authentication, conversation/session management, batching, or production deployment configuration.
-- Retrieval ranks only by semantic similarity; importance, tier, recency, and access frequency are intentionally excluded from ranking until a later phase.
-- The importance score is a baseline heuristic, not the final ADAM scoring mechanism or an LLM-based judgment.
-- Ollama is currently the only LLM provider implementation and must be running for the default `/memory` endpoint.
+`HeuristicImportanceScorer` is a transparent research baseline, not the final
+ADAM scoring mechanism. It combines persistent-language markers, content
+length, access recurrence, and recency. Its weights are configured in
+`app/config.py` and can be replaced with another scorer without changing the
+storage interface.
 
-## Phase 3 consolidation
+## Limitations and roadmap
 
-When a new memory arrives, `ConsolidationService` embeds it and compares it
-against only the top semantic candidates above the configured similarity
-threshold. The entire database is never sent to Ollama.
+- SQLite retrieval scans a user's memories in Python, so this is a prototype for
+  modest datasets.
+- The lifecycle policy currently exposes transitions but does not run an
+  automatic background lifecycle pass.
+- Compression metadata exists, but compression itself is not implemented.
+- There is no LLM extraction, consolidation, forgetting, query drift, adaptive
+  scope, multi-signal retrieval, or final response generation.
+- Raw conversation history is not stored or managed by this memory layer.
 
-`LLMClient` is the provider contract and `OllamaClient` is the current local
-experimental implementation. Ollama is asked for JSON using its `format: json`
-option, and the response is validated by the Pydantic `ConsolidationDecision`
-model. The action must be one of:
-
-- `DUPLICATE`: do not create a memory; increment the existing memory's access metadata.
-- `RELATED`: merge useful information, then recalculate embedding, importance, and tier.
-- `CONTRADICTORY`: replace the active content with newer/current information and recalculate derived fields.
-- `NEW/UNRELATED`: create a new memory normally.
-
-Related and contradictory updates preserve an audit row in the
-`consolidation_events` table containing incoming text, action, old content, new
-content, target memory, reason, and timestamp. A stronger local or Kaggle-backed
-model can later implement the same client contract without changing ADAM core
-logic.
-
-## Phase 2 importance and tiers
-
-`HeuristicImportanceScorer` combines four bounded signals:
-
-- Persistent language markers such as `my goal is`, `i prefer`, and `remember that`.
-- Content length, capped at 20 words.
-- Existing access count, capped at three accesses.
-- Recency using a one-day exponential half-life.
-
-The default weights are defined in `app/config.py` and passed into
-`ImportanceWeights`:
-
-```text
-persistent 0.55
-length     0.20
-recurrence 0.15
-recency    0.10
-```
-
-The default tier thresholds are also configurable in `app/config.py`:
-
-```text
-score <= 0.20              ARCHIVE
-0.20 < score <= 0.45      WORKING
-0.45 < score <= 0.70      SHORT_TERM
-score > 0.70              LONG_TERM
-```
-
-These rules are intentionally simple and measurable for ablation studies. A
-future scorer can implement the same `score(...)` contract without changing
-SQLite storage or the API pipeline.
-
-## Roadmap
-
-The next logical phase is **Phase 4: selective forgetting and archiving**. It
-should remain separate from consolidation and preserve the similarity-only
-retrieval baseline.
+The next logical phase is **LLM-assisted consolidation**, which will be added
+behind a replaceable client interface after the lifecycle separation is stable.

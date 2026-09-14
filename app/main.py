@@ -6,11 +6,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.llm.client import OllamaClient
-from app.memory.consolidation import ConsolidationConfig
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.storage import SQLiteStorage
-from app.memory.tiers import TierAssigner, TierThresholds
+from app.memory.tiers import TierAssigner
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.retrieval import RetrievalService
 
@@ -37,21 +35,19 @@ def build_retrieval_service() -> RetrievalService:
         recurrence=settings.importance_recurrence_weight,
         recency=settings.importance_recency_weight,
     )
-    thresholds = TierThresholds(
-        archive=settings.archive_threshold,
-        working=settings.working_threshold,
-        short_term=settings.short_term_threshold,
+    lifecycle_policy = TierAssigner(
+        initial_archive_threshold=settings.initial_archive_threshold,
+        initial_long_term_threshold=settings.initial_long_term_threshold,
+        working_to_long_term_age=settings.working_to_long_term_age,
+        working_to_long_term_min_accesses=settings.working_to_long_term_min_accesses,
+        short_term_to_archive_age=settings.short_term_to_archive_age,
+        archive_compression_level=settings.archive_compression_level,
     )
     return RetrievalService(
         build_storage(),
         EmbeddingService(settings.embedding_model),
         scorer=HeuristicImportanceScorer(weights),
-        tier_assigner=TierAssigner(thresholds),
-        llm=OllamaClient(settings.ollama_host, settings.ollama_model),
-        consolidation_config=ConsolidationConfig(
-            candidate_limit=settings.consolidation_candidate_limit,
-            min_similarity=settings.consolidation_min_similarity,
-        ),
+        lifecycle_policy=lifecycle_policy,
     )
 
 
@@ -67,7 +63,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "phase": 3}
+    return {"status": "ok", "phase": 2}
 
 
 @app.post("/memory", status_code=201)
@@ -109,4 +105,6 @@ def memory_to_response(memory):
         "access_count": memory.access_count,
         "importance_score": memory.importance_score,
         "tier": memory.tier,
+        "compression_level": memory.compression_level,
+        "updated_at": memory.updated_at,
     }

@@ -1,6 +1,9 @@
-"""Configurable memory tier assignment for Phase 2."""
+"""Configurable memory lifecycle policy for Phase 2."""
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from app.memory.models import Memory
 
 
 WORKING = "WORKING"
@@ -10,24 +13,46 @@ ARCHIVE = "ARCHIVE"
 
 
 @dataclass(frozen=True)
-class TierThresholds:
-    archive: float = 0.20
-    working: float = 0.45
-    short_term: float = 0.70
+class LifecyclePolicy:
+    """Initial placement and independent lifecycle transition rules."""
 
+    initial_archive_threshold: float = 0.20
+    initial_long_term_threshold: float = 0.70
+    working_to_long_term_age: timedelta = timedelta(days=7)
+    working_to_long_term_min_accesses: int = 1
+    short_term_to_archive_age: timedelta = timedelta(days=30)
+    archive_compression_level: int = 1
 
-class TierAssigner:
-    """Map a bounded importance score to one of the four memory tiers."""
-
-    def __init__(self, thresholds: TierThresholds | None = None):
-        self.thresholds = thresholds or TierThresholds()
-
-    def assign(self, importance_score: float, access_count: int = 0) -> str:
+    def initial_tier(self, importance_score: float) -> str:
         score = max(0.0, min(1.0, importance_score))
-        if score <= self.thresholds.archive:
+        if score <= self.initial_archive_threshold:
             return ARCHIVE
-        if score <= self.thresholds.working:
+        if score >= self.initial_long_term_threshold:
             return WORKING
-        if score <= self.thresholds.short_term:
-            return SHORT_TERM
-        return LONG_TERM
+        return SHORT_TERM
+
+    def transition(self, memory: Memory, now: datetime | None = None) -> str:
+        """Return the next tier using lifecycle metadata, not importance."""
+        current_time = now or datetime.now(timezone.utc)
+        age = current_time - memory.created_at
+        if memory.tier == WORKING:
+            if (
+                age >= self.working_to_long_term_age
+                and memory.access_count >= self.working_to_long_term_min_accesses
+            ):
+                return LONG_TERM
+            return WORKING
+        if memory.tier == SHORT_TERM:
+            if (
+                age >= self.short_term_to_archive_age
+                or memory.compression_level >= self.archive_compression_level
+            ):
+                return ARCHIVE
+        return memory.tier
+
+    def apply_transition(self, memory: Memory, now: datetime | None = None) -> Memory:
+        memory.tier = self.transition(memory, now)
+        return memory
+
+
+TierAssigner = LifecyclePolicy

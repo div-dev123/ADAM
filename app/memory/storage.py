@@ -18,19 +18,9 @@ CREATE TABLE IF NOT EXISTS memories (
     last_accessed TEXT NOT NULL,
     access_count INTEGER NOT NULL DEFAULT 0,
     importance_score REAL NOT NULL DEFAULT 0.0,
-    tier TEXT NOT NULL DEFAULT 'WORKING'
-);
-
-CREATE TABLE IF NOT EXISTS consolidation_events (
-    event_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    incoming_content TEXT NOT NULL,
-    target_memory_id TEXT,
-    action TEXT NOT NULL,
-    old_content TEXT,
-    new_content TEXT,
-    reason TEXT,
-    created_at TEXT NOT NULL
+    tier TEXT NOT NULL DEFAULT 'WORKING',
+    compression_level INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -63,6 +53,17 @@ class SQLiteStorage:
                 connection.execute(
                     "ALTER TABLE memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'WORKING'"
                 )
+            if "compression_level" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN compression_level INTEGER NOT NULL DEFAULT 0"
+                )
+            if "updated_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+                )
+            connection.execute(
+                "UPDATE memories SET updated_at = created_at WHERE updated_at = ''"
+            )
 
     def save_memory(self, memory: Memory) -> Memory:
         """Persist one memory and return it unchanged."""
@@ -70,8 +71,9 @@ class SQLiteStorage:
             connection.execute(
                 """INSERT INTO memories
                 (memory_id, user_id, content, embedding, created_at,
-                 last_accessed, access_count, importance_score, tier)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 last_accessed, access_count, importance_score, tier,
+                 compression_level, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 memory.to_row(),
             )
         return memory
@@ -82,7 +84,7 @@ class SQLiteStorage:
             rows = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count
-                   , importance_score, tier
+                   , importance_score, tier, compression_level, updated_at
                    FROM memories WHERE user_id = ?""",
                 (user_id,),
             ).fetchall()
@@ -93,10 +95,11 @@ class SQLiteStorage:
         accessed_at = accessed_at or utc_now()
         with self._connect() as connection:
             connection.execute(
-                """UPDATE memories
-                   SET last_accessed = ?, access_count = access_count + 1
+                     """UPDATE memories
+                         SET last_accessed = ?, updated_at = ?,
+                              access_count = access_count + 1
                    WHERE memory_id = ?""",
-                (accessed_at.isoformat(), memory_id),
+                     (accessed_at.isoformat(), accessed_at.isoformat(), memory_id),
             )
 
     def update_memory(self, memory: Memory) -> Memory:
@@ -105,7 +108,8 @@ class SQLiteStorage:
             connection.execute(
                 """UPDATE memories SET content = ?, embedding = ?,
                    last_accessed = ?, access_count = ?, importance_score = ?,
-                   tier = ? WHERE memory_id = ?""",
+                   tier = ?, compression_level = ?, updated_at = ?
+                   WHERE memory_id = ?""",
                 (
                     memory.content,
                     json.dumps(memory.embedding),
@@ -113,36 +117,12 @@ class SQLiteStorage:
                     memory.access_count,
                     memory.importance_score,
                     memory.tier,
+                    memory.compression_level,
+                    memory.updated_at.isoformat(),
                     memory.memory_id,
                 ),
             )
         return memory
-
-    def record_consolidation_event(
-        self, user_id: str, incoming_content: str, target: Memory,
-        decision, old_content: str | None = None,
-    ) -> None:
-        """Record a consolidation decision for later research auditing."""
-        with self._connect() as connection:
-            connection.execute(
-                """INSERT INTO consolidation_events
-                   (event_id, user_id, incoming_content, target_memory_id,
-                    action, old_content, new_content, reason, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    str(uuid.uuid4()), user_id, incoming_content,
-                    target.memory_id, decision.action, old_content,
-                    target.content, decision.reason, utc_now().isoformat(),
-                ),
-            )
-
-    def get_consolidation_events(self, user_id: str) -> list[dict]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM consolidation_events WHERE user_id = ?",
-                (user_id,),
-            ).fetchall()
-        return [dict(row) for row in rows]
 
     def count(self) -> int:
         """Return the number of persisted memories."""
@@ -159,4 +139,5 @@ def create_memory(user_id: str, content: str, embedding: list[float]) -> Memory:
         embedding=embedding,
         created_at=now,
         last_accessed=now,
+        updated_at=now,
     )

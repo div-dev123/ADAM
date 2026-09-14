@@ -1,4 +1,4 @@
-"""Memory data model for the Phase 1 and Phase 2 pipeline."""
+"""Memory data model with intrinsic value and lifecycle state separated."""
 
 import json
 from dataclasses import dataclass
@@ -20,6 +20,12 @@ class Memory:
     access_count: int = 0
     importance_score: float = 0.0
     tier: str = "WORKING"
+    compression_level: int = 0
+    updated_at: datetime | None = None
+
+    def __post_init__(self):
+        if self.updated_at is None:
+            self.updated_at = self.created_at
 
     def to_row(self) -> tuple:
         return (
@@ -32,6 +38,8 @@ class Memory:
             self.access_count,
             self.importance_score,
             self.tier,
+            self.compression_level,
+            self.updated_at.isoformat(),
         )
 
     @classmethod
@@ -46,4 +54,10 @@ class Memory:
             access_count=row[6],
             importance_score=row[7],
             tier=row[8],
+            compression_level=row[9] if len(row) > 9 else 0,
+            updated_at=(
+                datetime.fromisoformat(row[10])
+                if len(row) > 10 and row[10]
+                else datetime.fromisoformat(row[4])
+            ),
         )
