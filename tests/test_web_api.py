@@ -203,3 +203,19 @@ def test_static_index_and_assets_serving(tmp_path):
     assert js_resp.status_code == 200
     assert "handleChatSubmit" in js_resp.text
 
+
+def test_technical_preferences_and_project_importance_scoring(tmp_path):
+    app.state.retrieval = create_test_retrieval(tmp_path)
+    client = TestClient(app)
+
+    # 1. Test "I love dsa in java"
+    res1 = client.post("/memory", json={"user_id": "user-1", "content": "I love dsa in java"}).json()
+    assert res1["importance_score"] >= 0.70
+    assert res1["tier"] == "WORKING"
+
+    # 2. Test "i am currently doing a project of memory management"
+    res2 = client.post("/memory", json={"user_id": "user-1", "content": "i am currently doing a project of memory management"}).json()
+    assert res2["importance_score"] >= 0.70
+    assert res2["tier"] == "WORKING"
+
+

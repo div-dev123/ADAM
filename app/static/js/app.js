@@ -54,6 +54,7 @@
         filterImportance: document.getElementById('filter-importance'),
         btnRefreshMemories: document.getElementById('btn-refresh-memories'),
         btnAddMemoryManual: document.getElementById('btn-add-memory-manual'),
+        btnEmptyDbDashboard: document.getElementById('btn-empty-db-dashboard'),
         cardsContainers: {
             WORKING: document.getElementById('cards-working'),
             SHORT_TERM: document.getElementById('cards-short-term'),
@@ -152,6 +153,14 @@
         }, 3500);
     }
 
+    function scrollToBottom() {
+        if (elements.chatMessages) {
+            requestAnimationFrame(() => {
+                elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            });
+        }
+    }
+
     function formatTime(isoString) {
         if (!isoString) return '-';
         const date = new Date(isoString);
@@ -208,6 +217,7 @@
         });
 
         // Trigger view-specific loads
+        if (viewName === 'chat') scrollToBottom();
         if (viewName === 'dashboard') loadMemories();
         if (viewName === 'lifecycle') loadLifecycleTracer();
         if (viewName === 'consolidation') loadConsolidationFeed();
@@ -294,10 +304,9 @@
         `;
         turnGroup.appendChild(userRow);
         elements.chatMessages.appendChild(turnGroup);
-        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        scrollToBottom();
 
         try {
-            // Animate pipeline stages
             setPipelineSteps('consolidation', ['extract']);
 
             const turnResult = await apiRequest('/chat', {
@@ -351,7 +360,7 @@
         } finally {
             state.isProcessing = false;
             elements.btnSendMessage.disabled = false;
-            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            scrollToBottom();
         }
     }
 
@@ -442,6 +451,7 @@
             </div>
         `;
         turnGroup.appendChild(assistantRow);
+        scrollToBottom();
     }
 
     function renderTurnInspector(turnId, userQuery, turnResult) {
@@ -508,9 +518,9 @@
     // =========================================================================
 
     async function loadMemories() {
-        const query = elements.memorySearchInput.value.trim();
-        const tier = elements.filterTier.value;
-        const impFilter = elements.filterImportance.value;
+        const query = elements.memorySearchInput ? elements.memorySearchInput.value.trim() : '';
+        const tier = elements.filterTier ? elements.filterTier.value : '';
+        const impFilter = elements.filterImportance ? elements.filterImportance.value : '';
 
         try {
             let url = `/memories?user_id=${encodeURIComponent(state.userId)}`;
@@ -552,8 +562,11 @@
         // Update counts and render cards in each column
         Object.keys(grouped).forEach(tierKey => {
             const list = grouped[tierKey];
-            elements.tierCounts[tierKey].textContent = list.length;
+            if (elements.tierCounts[tierKey]) {
+                elements.tierCounts[tierKey].textContent = list.length;
+            }
             const container = elements.cardsContainers[tierKey];
+            if (!container) return;
 
             if (list.length === 0) {
                 container.innerHTML = `<div class="tier-empty-slot">No memories in ${tierKey} tier</div>`;
@@ -842,7 +855,7 @@
                 method: 'POST',
                 body: JSON.stringify({ confirm: true }),
             });
-            showToast('Research database cleared successfully!', 'success');
+            showToast('Research database emptied and refreshed!', 'success');
             closeModals();
             loadMemories();
             loadMetrics();
@@ -864,6 +877,7 @@
         const drawer = document.getElementById(drawerId);
         if (drawer) {
             drawer.classList.toggle('open');
+            scrollToBottom();
         }
     }
 
@@ -914,42 +928,62 @@
         });
 
         // Dashboard Controls
-        elements.memorySearchInput.addEventListener('input', () => {
-            elements.btnClearSearch.style.display = elements.memorySearchInput.value ? 'inline-block' : 'none';
+        if (elements.memorySearchInput) {
+            elements.memorySearchInput.addEventListener('input', () => {
+                elements.btnClearSearch.style.display = elements.memorySearchInput.value ? 'inline-block' : 'none';
+                loadMemories();
+            });
+        }
+        if (elements.btnClearSearch) {
+            elements.btnClearSearch.addEventListener('click', () => {
+                elements.memorySearchInput.value = '';
+                elements.btnClearSearch.style.display = 'none';
+                loadMemories();
+            });
+        }
+        if (elements.filterTier) elements.filterTier.addEventListener('change', loadMemories);
+        if (elements.filterImportance) elements.filterImportance.addEventListener('change', loadMemories);
+        if (elements.btnRefreshMemories) elements.btnRefreshMemories.addEventListener('click', () => {
             loadMemories();
+            showToast('Memory dashboard refreshed', 'info');
         });
-        elements.btnClearSearch.addEventListener('click', () => {
-            elements.memorySearchInput.value = '';
-            elements.btnClearSearch.style.display = 'none';
-            loadMemories();
-        });
-        elements.filterTier.addEventListener('change', loadMemories);
-        elements.filterImportance.addEventListener('change', loadMemories);
-        elements.btnRefreshMemories.addEventListener('click', loadMemories);
 
-        elements.btnAddMemoryManual.addEventListener('click', () => {
-            elements.manualMemoryUser.value = state.userId;
-            elements.modalAddMemory.style.display = 'flex';
-        });
-        elements.btnSubmitManualMemory.addEventListener('click', handleManualMemorySubmit);
+        if (elements.btnAddMemoryManual) {
+            elements.btnAddMemoryManual.addEventListener('click', () => {
+                elements.manualMemoryUser.value = state.userId;
+                elements.modalAddMemory.style.display = 'flex';
+            });
+        }
+        if (elements.btnSubmitManualMemory) elements.btnSubmitManualMemory.addEventListener('click', handleManualMemorySubmit);
+
+        // Empty Database button on Dashboard
+        if (elements.btnEmptyDbDashboard) {
+            elements.btnEmptyDbDashboard.addEventListener('click', () => {
+                elements.modalResetConfirm.style.display = 'flex';
+            });
+        }
 
         // Lifecycle Explorer
-        elements.tracerMemorySelect.addEventListener('change', (e) => {
-            state.selectedMemoryId = e.target.value;
-            renderMemoryHistoryTimeline(e.target.value);
-        });
+        if (elements.tracerMemorySelect) {
+            elements.tracerMemorySelect.addEventListener('change', (e) => {
+                state.selectedMemoryId = e.target.value;
+                renderMemoryHistoryTimeline(e.target.value);
+            });
+        }
 
         // Consolidation Feed
-        elements.btnRefreshHistory.addEventListener('click', loadConsolidationFeed);
+        if (elements.btnRefreshHistory) elements.btnRefreshHistory.addEventListener('click', loadConsolidationFeed);
 
         // Tier Transition Modal
-        elements.btnSubmitTransition.addEventListener('click', handleTierTransitionSubmit);
+        if (elements.btnSubmitTransition) elements.btnSubmitTransition.addEventListener('click', handleTierTransitionSubmit);
 
-        // Reset Database Modal
-        elements.btnResetDb.addEventListener('click', () => {
-            elements.modalResetConfirm.style.display = 'flex';
-        });
-        elements.btnConfirmReset.addEventListener('click', handleDatabaseReset);
+        // Reset Database Modal from Header
+        if (elements.btnResetDb) {
+            elements.btnResetDb.addEventListener('click', () => {
+                elements.modalResetConfirm.style.display = 'flex';
+            });
+        }
+        if (elements.btnConfirmReset) elements.btnConfirmReset.addEventListener('click', handleDatabaseReset);
 
         // Escape key closes modals
         window.addEventListener('keydown', (e) => {
