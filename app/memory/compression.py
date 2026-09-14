@@ -25,23 +25,36 @@ class CompressionService:
         self.config = config or CompressionConfig()
 
     def transition(self, memory: Memory, target_tier: str) -> Memory:
+        if memory.tier == target_tier:
+            return memory
+
         level = self._level_for(memory.tier, target_tier)
         if level is None:
             raise ValueError(f"Unsupported compression transition: {memory.tier} -> {target_tier}")
-        result = self.llm.compress_memory(memory.content, level)
+
         old_content = memory.content
-        memory.content = result.compressed_content.strip()
-        memory.embedding = self.embeddings.encode(memory.content)
+        if level > 0:
+            result = self.llm.compress_memory(memory.content, level)
+            memory.content = result.compressed_content.strip()
+            memory.embedding = self.embeddings.encode(memory.content)
+            memory.compression_level = level
+            reason = result.reason
+            operation = "COMPRESSED"
+        else:
+            reason = f"Promoted/Reactivated to {target_tier}"
+            operation = "PROMOTED"
+
         memory.tier = target_tier
-        memory.compression_level = level
         memory.updated_at = utc_now()
         self.storage.update_memory(memory)
-        self.storage.record_history(memory, "COMPRESSED", old_content, result.reason)
+        self.storage.record_history(memory, operation, old_content, reason)
         return memory
 
     def _level_for(self, source: str, target: str) -> int | None:
-        if source == WORKING and target == LONG_TERM:
+        if target == LONG_TERM:
             return self.config.working_to_long_term_level
-        if source == SHORT_TERM and target == ARCHIVE:
+        if target == ARCHIVE:
             return self.config.short_term_to_archive_level
+        if target in {WORKING, SHORT_TERM}:
+            return 0
         return None

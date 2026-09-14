@@ -25,14 +25,40 @@ class ConsolidationService:
         self.config = config
 
     def process(self, user_id: str, content: str) -> Memory:
+        trace = self.process_with_trace(user_id, content)
+        return trace["memory"]
+
+    def process_with_trace(self, user_id: str, content: str) -> dict:
         embedding = self.embeddings.encode(content)
         candidates = self._candidates(user_id, embedding)
-        decision = self.llm.classify_memory(content, [
-            {"memory_id": memory.memory_id, "content": memory.content,
-             "similarity": score}
+        candidates_info = [
+            {
+                "memory_id": memory.memory_id,
+                "content": memory.content,
+                "similarity": round(float(score), 4),
+                "tier": memory.tier,
+                "importance_score": memory.importance_score,
+            }
             for score, memory in candidates
-        ])
+        ]
+
+        try:
+            decision = self.llm.classify_memory(content, [
+                {"memory_id": c["memory_id"], "content": c["content"], "similarity": c["similarity"]}
+                for c in candidates_info
+            ])
+        except Exception as error:
+            # Fallback to NEW when LLM classification is unavailable
+            decision = type("FallbackDecision", (), {
+                "action": "NEW",
+                "reason": f"Fallback to NEW (LLM unavailable: {error})",
+                "merged_content": None,
+                "merged_text": lambda self: "",
+            })()
+
         target = candidates[0][1] if candidates else None
+        old_content = target.content if target else None
+
         if decision.action == "DUPLICATE" and target:
             accessed_at = utc_now()
             self.storage.update_access_metadata(target.memory_id, accessed_at)
@@ -40,10 +66,24 @@ class ConsolidationService:
             target.updated_at = accessed_at
             target.access_count += 1
             self.storage.record_history(target, "DUPLICATE", target.content, decision.reason)
-            return target
-        if decision.action in {"RELATED", "CONTRADICTORY"} and target:
-            return self._update(target, content, decision)
-        return self._create(user_id, content, embedding)
+            memory = target
+        elif decision.action in {"RELATED", "CONTRADICTORY"} and target:
+            memory = self._update(target, content, decision)
+        else:
+            memory = self._create(user_id, content, embedding)
+
+        return {
+            "memory": memory,
+            "action": decision.action,
+            "decision_reason": getattr(decision, "reason", ""),
+            "merged_content": getattr(decision, "merged_content", None),
+            "old_content": old_content if decision.action != "NEW" else None,
+            "candidates": candidates_info,
+            "is_stored": True,
+            "importance_score": memory.importance_score,
+            "tier": memory.tier,
+            "compression_level": memory.compression_level,
+        }
 
     def _candidates(self, user_id: str, embedding):
         ranked = sorted(
@@ -80,3 +120,4 @@ class ConsolidationService:
             memory.content, memory.access_count, memory.created_at
         )
         memory.tier = self.lifecycle_policy.initial_tier(memory.importance_score)
+

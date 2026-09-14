@@ -1,221 +1,205 @@
-# ADAM
+# ADAM: Adaptive Memory Management Framework
 
-ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems.
+ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems. It decides what information should be stored, how it should be maintained, when it should be forgotten or archived, and which memories should be retrieved for a new query.
 
-The repository implements the basic semantic memory system, Phase 2 importance and lifecycle management, and **Phase 3: LLM-assisted consolidation and compression**.
+The system includes a **full interactive research web interface** to visually demonstrate and inspect memory extraction, importance scoring, tier transitions, consolidation, and retrieval.
 
+---
+
+## Architecture & Pipelines
+
+ADAM consists of two main pipelines:
+
+### 1. Memory Write Path
 ```text
-New memory
-  -> embedding
-  -> importance score
-  -> initial lifecycle tier
-  -> bounded semantic candidates
-  -> structured LLM decision
-  -> SQLite create/update
-
-Query
-  -> embedding
-  -> cosine retrieval
-  -> top-k memories
+New Interaction / Dialogue
+        ↓
+Heuristic Importance Scoring [0.0 - 1.0]
+        ↓
+Initial Lifecycle Tier Placement [WORKING, SHORT_TERM, ARCHIVE]
+        ↓
+Bounded Candidate Search (Cosine Similarity ≥ 0.35)
+        ↓
+LLM Consolidation Decision
+        ├── NEW           → Insert fresh memory
+        ├── DUPLICATE     → Increment access count & update timestamp
+        ├── RELATED       → Merge facts, regenerate embedding & score
+        └── CONTRADICTORY → Overwrite active content, record immutable audit log
+        ↓
+Storage & Lifecycle Compression (Level 1 / Level 2)
 ```
 
-## Importance and tier are separate
-
+### 2. Memory Read Path
 ```text
-importance_score = intrinsic value of the information (0-1)
-tier             = current storage/lifecycle state
+User Query
+        ↓
+SentenceTransformer Embedding (all-MiniLM-L6-v2)
+        ↓
+Semantic Memory Retrieval (Cosine Similarity)
+        ↓
+Top-K Memory Ingestion & Context Assembly
+        ↓
+Local Ollama LLM (qwen2.5:3b)
+        ↓
+Final Response & Response Memory Evaluation
 ```
 
-Importance is recalculated only when the content is changed by a related or
-contradictory consolidation. Compression and ordinary tier transitions preserve
-importance. Tier is allowed to change because of age, usage, relevance, or
-compression.
+---
 
-ADAM memories are selected information extracted from conversations. They are
-not a copy of every raw conversation message; raw conversation history remains
-a separate future abstraction.
+## Core Concept: Decoupled Importance vs. Tier
 
-## Phase 3 behavior
+In ADAM, **intrinsic value** and **lifecycle state** are completely decoupled:
+- **`importance_score` (0.0 to 1.0)**: Represents the factual significance of the information. Calculated explicitly via Python heuristics (persistence markers, content length, recurrence, and recency decay) so that scoring is deterministic, explainable, and reproducible without stochastic LLM overhead.
+- **`tier` (`WORKING`, `SHORT_TERM`, `LONG_TERM`, `ARCHIVE`)**: Represents the operational storage state. Tiers transition according to aging, access counts, and lifecycle compression (`WORKING` ➔ `LONG_TERM` at compression level 1; `SHORT_TERM` ➔ `ARCHIVE` at compression level 2).
 
-New memories are classified against only a small set of semantically similar
-candidates. The entire database is never sent to the LLM.
+---
 
-- `NEW`: create a new memory.
-- `DUPLICATE`: do not create a duplicate; update access metadata.
-- `RELATED`: merge useful information, regenerate the embedding, and recalculate importance.
-- `CONTRADICTORY`: replace active content with current information and preserve old/new content in history.
+## Research Web Interface (5 Core Views)
 
-Compression is explicit and never runs during normal creation:
+The web interface is served directly from the FastAPI backend at `http://127.0.0.1:8000`.
 
-```text
-WORKING -> LONG_TERM  (compression level 1)
-SHORT_TERM -> ARCHIVE (compression level 2)
-```
+### 1. Chat & Live Pipeline Inspector
+- **Interactive Dialogue**: Connects to the local Ollama LLM with memory injection.
+- **Visual Badges**: Attached to **both** user and assistant messages:
+  - **Importance Score**: e.g., `⭐ Importance: 0.85 (High)`
+  - **Memory Tier**: e.g., `🗄️ WORKING` or `🗄️ SHORT-TERM`
+  - **Consolidation Action**: e.g., `⚖️ NEW`, `DUPLICATE`, `RELATED`, `CONTRADICTORY`
+  - **Compression Level**: e.g., `📦 L1 Compressed`
+- **Expandable ADAM Details**: Click "Details" or "Retrieved Context" on any message to inspect candidate memories, cosine similarity scores, classification reasoning, and text evolution.
+- **Live Pipeline Step Indicator**: Visual progress banner showing `[1. Extraction] ➔ [2. Consolidation] ➔ [3. Semantic Retrieval] ➔ [4. Context & LLM] ➔ [5. Response Memory]`.
 
-Related, contradictory, duplicate, and compression operations are recorded in
-SQLite history for research auditing.
+### 2. Memory Dashboard (4 Tiers)
+- **Kanban Columns**: Displays active memories grouped across the four tiers:
+  - 🔵 **WORKING**: Active, high-salience facts (Initial Score ≥ 0.70).
+  - 🟢 **SHORT-TERM**: Transitory conversational context (Score: 0.20 – 0.70).
+  - 🟣 **LONG-TERM**: Persistent memory aged past 7 days with ≥ 1 access (Compressed L1).
+  - 🟠 **ARCHIVE**: Low priority / expired memory (Compressed L2).
+- **Search & Filters**: Real-time content search, tier filtering, and importance level filtering.
+- **Card Actions**: Inspect history, trigger manual tier transitions, or delete memories.
 
-## Requirements
+### 3. Memory Lifecycle & State Machine Explorer
+- **Interactive State Diagram**: Visualizes transition rules between `NEW`, `WORKING`, `SHORT_TERM`, `LONG_TERM`, and `ARCHIVE`.
+- **Memory History Tracer**: Select any stored memory to view its immutable audit timeline, operation reasons, and before/after text diffs.
 
-- Python 3.10 or newer
-- macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
-- SQLite, included with Python
-- Ollama with `qwen2.5:3b` for the default Phase 3 API path
+### 4. Consolidation Audit Feed
+- **Global Event Log**: Real-time log of all consolidation events (`NEW`, `DUPLICATE`, `RELATED`, `CONTRADICTORY`, `COMPRESSED`).
+- **Diff Inspection**: Shows prior content vs. updated content side-by-side with LLM classification explanations.
 
-No MongoDB, Redis, Docker, or external database is used. Query retrieval still
-uses cosine similarity only; query drift, adaptive retrieval, and multi-signal
-ranking are not implemented.
+### 5. System & Research Metrics Panel
+- **Aggregate Statistics**: Total memories, average importance score, total consolidations, compressed memory counts, and tier distribution progress bars.
+- **Environment Status**: Live Ollama connection health monitor, active model name, SentenceTransformer configuration, and SQLite path.
+- **Database Reset**: Safety modal to clear all research data with explicit confirmation.
 
-## Setup
+---
 
-### 1. Create the environment
+## Quickstart & Setup
 
+### 1. Environment Setup
 ```bash
+# 1. Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+
+# 2. Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-In VS Code, select `.venv/bin/python` as the interpreter.
-
-The first embedding call may download and cache `all-MiniLM-L6-v2`, a lightweight
-384-dimensional SentenceTransformer model.
-
-### 2. Configure Ollama
-
+### 2. Start Ollama (Local LLM)
+In a separate terminal:
 ```bash
-brew install ollama
+# Start local Ollama server
 ollama serve
+
+# Pull the lightweight 3B model (optimized for MacBook M2 8GB)
 ollama pull qwen2.5:3b
 ```
+*(Note: If Ollama is offline or not installed, ADAM falls back gracefully, and all memory scoring, storage, and retrieval continue to function.)*
 
-The model is deliberately small for an M2 MacBook Air with 8 GB unified memory.
-Tests use a fake LLM and do not require Ollama to run.
-
-Optional provider and consolidation settings:
-
+### 3. Run the Application
 ```bash
-export OLLAMA_HOST='http://127.0.0.1:11434'
-export OLLAMA_MODEL='qwen2.5:3b'
-export CONSOLIDATION_CANDIDATE_LIMIT='3'
-export CONSOLIDATION_MIN_SIMILARITY='0.35'
-export WORKING_COMPRESSION_LEVEL='1'
-export ARCHIVE_COMPRESSION_LEVEL_TARGET='2'
+source .venv/bin/activate
+USE_TF=0 uvicorn app.main:app --reload --port 8000
 ```
 
-Lifecycle settings are also configurable:
-
-```bash
-export INITIAL_ARCHIVE_THRESHOLD='0.20'
-export INITIAL_LONG_TERM_THRESHOLD='0.70'
-export WORKING_TO_LONG_TERM_DAYS='7'
-export WORKING_TO_LONG_TERM_MIN_ACCESSES='1'
-export SHORT_TERM_TO_ARCHIVE_DAYS='30'
-export ARCHIVE_COMPRESSION_LEVEL='1'
+Open your browser and navigate to:
 ```
+http://127.0.0.1:8000
+```
+Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
-## Run tests
+---
+
+## Running the Automated Test Suite
 
 ```bash
 source .venv/bin/activate
-USE_TF=0 python -m pytest -q
+USE_TF=0 python -m pytest -v
 ```
 
-`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras
-installation. Tests use deterministic embedding and LLM doubles, so no model
-server is needed.
+All 19 test cases validate:
+- SQLite persistence and row schemas
+- Heuristic importance scoring boundaries [0, 1]
+- Independent lifecycle policy and tier transitions
+- Semantic retrieval and cosine ranking
+- LLM consolidation actions (`NEW`, `DUPLICATE`, `RELATED`, `CONTRADICTORY`)
+- Lifecycle compression transitions and history auditing
+- `/chat`, `/metrics`, `/memories`, `/history`, `/system/status`, and `/reset` API endpoints
+- Static web interface asset serving
 
-## Run the API
+---
 
-```bash
-source .venv/bin/activate
-USE_TF=0 python -m uvicorn app.main:app --reload
-```
+## API Endpoints Reference
 
-The API is available at `http://127.0.0.1:8000`; interactive documentation is
-at `http://127.0.0.1:8000/docs`.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Serves the interactive Research Web Interface SPA |
+| `GET` | `/health` | Healthcheck returning phase version |
+| `GET` | `/system/status` | Runtime status of Ollama, models, and SQLite |
+| `POST` | `/chat` | Executes conversational turn with memory write, retrieval, LLM response, and pipeline trace |
+| `POST` | `/memory` | Stores/consolidates a memory directly |
+| `POST` | `/retrieve` | Semantic similarity memory retrieval for a query |
+| `GET` | `/memories` | List memories with optional `user_id`, `tier`, and `search` query parameters |
+| `GET` | `/memory/{id}` | Retrieve a single memory by ID |
+| `GET` | `/memory/{id}/history` | Get audit history log for a memory |
+| `POST` | `/memory/{id}/transition` | Explicitly transition a memory to a target tier using compression |
+| `DELETE` | `/memory/{id}` | Delete a memory and its audit history |
+| `GET` | `/history` | List recent global consolidation and compression audit events |
+| `GET` | `/metrics` | Calculate live research metrics (counts, tier distribution, averages) |
+| `POST` | `/reset` | Clear the research database with `{"confirm": true}` |
 
-### Store a memory
+---
 
-```bash
-curl -X POST http://127.0.0.1:8000/memory \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","content":"My goal is to pass the AWS certification."}'
-```
-
-The default API path uses Ollama to classify the new memory before persisting it.
-
-### Retrieve memories
-
-```bash
-curl -X POST http://127.0.0.1:8000/retrieve \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","query":"What is my goal?","top_k":5}'
-```
-
-Retrieval ranks only by cosine similarity. Importance, tier, recency, and access
-count are intentionally not ranking signals yet.
-
-## SQLite storage
-
-The database is created automatically at `data/adam.db`. The `memories` table
-stores content, embedding JSON, user ID, timestamps, access metadata,
-`importance_score`, `tier`, and `compression_level`.
-
-The `memory_history` table records consolidation and compression operations with
-old content, new content, operation type, reason, and timestamp. Embeddings are
-stored as JSON text because it is transparent, works without SQLite extensions,
-and can later be migrated to a vector database.
-
-The SQLite database is ignored by Git through `data/*.db`.
-
-## Project structure
+## Project Structure
 
 ```text
 ADAM/
 ├── app/
-│   ├── main.py                    # FastAPI endpoints and default wiring
-│   ├── config.py                  # Model, threshold, and lifecycle settings
+│   ├── main.py                     # FastAPI entry point, API routes & static file mounting
+│   ├── config.py                   # App settings, thresholds, and weights
 │   ├── llm/
-│   │   └── client.py              # LLMClient, OllamaClient, validated results
+│   │   └── client.py               # LLMClient base, OllamaClient, structured schemas
 │   ├── memory/
-│   │   ├── models.py              # Memory model and SQLite row conversion
-│   │   ├── storage.py             # SQLite persistence and history
-│   │   ├── importance.py          # Replaceable heuristic scorer
-│   │   ├── tiers.py               # Independent lifecycle policy
-│   │   ├── consolidation.py       # Candidate classification and updates
-│   │   └── compression.py         # Explicit compressed transitions
-│   └── retrieval/
-│       ├── embeddings.py          # Replaceable embedding interface
-│       ├── retrieval.py           # Write/retrieval orchestration
-│       └── similarity.py           # Cosine similarity
-├── data/                          # Local runtime data; database is ignored
+│   │   ├── models.py               # Memory data model and SQLite conversions
+│   │   ├── storage.py              # SQLite storage, metrics calculation, and audit history
+│   │   ├── importance.py           # Heuristic importance scorer
+│   │   ├── tiers.py                # Lifecycle policy and tier rules
+│   │   ├── consolidation.py        # Candidate search & LLM consolidation write path
+│   │   └── compression.py          # Lifecycle compression transitions (L1 & L2)
+│   ├── retrieval/
+│   │   ├── embeddings.py           # SentenceTransformer (all-MiniLM-L6-v2) embedding service
+│   │   ├── similarity.py           # Cosine similarity calculation
+│   │   └── retrieval.py            # Retrieval & full conversational turn orchestration
+│   └── static/                     # Research Web Interface SPA
+│       ├── index.html              # 5-view research UI layout
+│       ├── css/
+│       │   └── styles.css          # Dark-mode styling, glassmorphism & tier color accents
+│       └── js/
+│           └── app.js              # State manager, live pipeline animator & API client
+├── data/                           # Local SQLite database directory (data/adam.db)
 ├── tests/
-│   └── test_phase1.py             # Phase 1-3 tests
+│   ├── test_phase1.py              # Core memory, scoring, consolidation & compression unit tests
+│   └── test_web_api.py             # Full web API, chat trace, metrics & static assets tests
 ├── requirements.txt
-├── README.md
-└── .gitignore
+└── README.md
 ```
-
-## Structured LLM contract
-
-`LLMClient` is the provider abstraction. `OllamaClient` is the current local
-experimental provider and sends JSON-mode prompts to `qwen2.5:3b`. Pydantic
-validates both `ConsolidationDecision` and `CompressionResult`; arbitrary prose
-is rejected instead of being parsed with string heuristics.
-
-A stronger local or Kaggle-backed provider can implement the same interface
-without changing ADAM's consolidation, compression, storage, or retrieval
-logic.
-
-## Limitations and roadmap
-
-This remains a research prototype. SQLite retrieval scans one user's memories
-in Python, there is no authentication or background scheduler, and the current
-Ollama provider is the only real LLM provider. Forgetting, query drift, adaptive
-scope, multi-signal ranking, context assembly, and final response generation
-remain future phases.
-
-The next logical phase is selective forgetting and archiving after the current
-consolidation/compression behavior is experimentally evaluated.

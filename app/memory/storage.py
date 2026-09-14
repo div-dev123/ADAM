@@ -176,6 +176,125 @@ class SQLiteStorage:
         with self._connect() as connection:
             return connection.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
 
+    def get_all_memories(
+        self,
+        user_id: str | None = None,
+        tier: str | None = None,
+        search: str | None = None,
+    ) -> list[Memory]:
+        """Fetch memories with optional user, tier, or search filters."""
+        query = """SELECT memory_id, user_id, content, embedding, created_at,
+                          last_accessed, access_count, importance_score, tier,
+                          compression_level, updated_at
+                   FROM memories WHERE 1=1"""
+        params = []
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+        if tier:
+            query += " AND tier = ?"
+            params.append(tier.upper())
+        if search:
+            query += " AND content LIKE ?"
+            params.append(f"%{search}%")
+        query += " ORDER BY datetime(created_at) DESC"
+
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [Memory.from_row(tuple(row)) for row in rows]
+
+    def get_metrics(self, user_id: str | None = None) -> dict:
+        """Calculate live research metrics from storage and history."""
+        user_filter = "WHERE user_id = ?" if user_id else ""
+        user_param = (user_id,) if user_id else ()
+
+        with self._connect() as connection:
+            total_memories = connection.execute(
+                f"SELECT COUNT(*) FROM memories {user_filter}", user_param
+            ).fetchone()[0]
+
+            tier_rows = connection.execute(
+                f"SELECT tier, COUNT(*) FROM memories {user_filter} GROUP BY tier",
+                user_param,
+            ).fetchall()
+            tier_counts = {
+                "WORKING": 0,
+                "SHORT_TERM": 0,
+                "LONG_TERM": 0,
+                "ARCHIVE": 0,
+            }
+            for row in tier_rows:
+                tier_counts[row[0]] = row[1]
+
+            avg_importance_row = connection.execute(
+                f"SELECT AVG(importance_score) FROM memories {user_filter}",
+                user_param,
+            ).fetchone()
+            avg_importance = round(avg_importance_row[0], 4) if avg_importance_row and avg_importance_row[0] is not None else 0.0
+
+            compressed_count = connection.execute(
+                f"SELECT COUNT(*) FROM memories WHERE compression_level > 0 {'AND user_id = ?' if user_id else ''}",
+                user_param,
+            ).fetchone()[0]
+
+            history_filter = "WHERE user_id = ?" if user_id else ""
+            consolidation_rows = connection.execute(
+                f"SELECT operation, COUNT(*) FROM memory_history {history_filter} GROUP BY operation",
+                user_param,
+            ).fetchall()
+            consolidation_counts = {
+                "DUPLICATE": 0,
+                "RELATED": 0,
+                "CONTRADICTORY": 0,
+                "COMPRESSED": 0,
+            }
+            for row in consolidation_rows:
+                consolidation_counts[row[0]] = row[1]
+
+        return {
+            "total_memories": total_memories,
+            "tier_counts": tier_counts,
+            "avg_importance": avg_importance,
+            "compressed_memories": compressed_count,
+            "archived_memories": tier_counts.get("ARCHIVE", 0),
+            "consolidation_counts": consolidation_counts,
+            "total_consolidations": sum(
+                consolidation_counts.get(k, 0)
+                for k in ("DUPLICATE", "RELATED", "CONTRADICTORY")
+            ),
+        }
+
+    def get_all_history(self, limit: int = 50, user_id: str | None = None) -> list[dict]:
+        """Fetch the most recent consolidation/compression history records."""
+        query = "SELECT * FROM memory_history"
+        params = []
+        if user_id:
+            query += " WHERE user_id = ?"
+            params.append(user_id)
+        query += " ORDER BY datetime(created_at) DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete a single memory and its history."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM memories WHERE memory_id = ?", (memory_id,)
+            )
+            connection.execute(
+                "DELETE FROM memory_history WHERE memory_id = ?", (memory_id,)
+            )
+            return cursor.rowcount > 0
+
+    def reset_database(self) -> None:
+        """Truncate all memories and history tables."""
+        with self._connect() as connection:
+            connection.execute("DELETE FROM memories")
+            connection.execute("DELETE FROM memory_history")
+
 
 def create_memory(user_id: str, content: str, embedding: list[float]) -> Memory:
     now = utc_now()

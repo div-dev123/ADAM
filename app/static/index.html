@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAM - Adaptive Memory Management Research Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body class="theme-dark">
+    <div id="app-container">
+        <!-- Top App Navigation -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="logo-orb">
+                    <div class="orb-inner"></div>
+                    <div class="orb-ring"></div>
+                </div>
+                <div class="brand-text">
+                    <div class="brand-title">
+                        <span class="brand-gradient">ADAM</span>
+                        <span class="version-tag">RESEARCH DEMO • PHASE 3</span>
+                    </div>
+                    <div class="brand-sub">Adaptive Dynamic AI Memory Management</div>
+                </div>
+            </div>
+
+            <!-- Global Navigation Tabs -->
+            <nav class="nav-tabs" role="tablist">
+                <button class="nav-tab active" data-view="chat" id="tab-chat">
+                    <span class="tab-icon">💬</span>
+                    <span class="tab-label">Chat & Pipeline</span>
+                </button>
+                <button class="nav-tab" data-view="dashboard" id="tab-dashboard">
+                    <span class="tab-icon">🗄️</span>
+                    <span class="tab-label">Memory Dashboard</span>
+                    <span class="badge-count" id="header-memory-count">0</span>
+                </button>
+                <button class="nav-tab" data-view="lifecycle" id="tab-lifecycle">
+                    <span class="tab-icon">🔄</span>
+                    <span class="tab-label">Lifecycle Explorer</span>
+                </button>
+                <button class="nav-tab" data-view="consolidation" id="tab-consolidation">
+                    <span class="tab-icon">⚖️</span>
+                    <span class="tab-label">Consolidation Audit</span>
+                </button>
+                <button class="nav-tab" data-view="metrics" id="tab-metrics">
+                    <span class="tab-icon">📊</span>
+                    <span class="tab-label">Research Metrics</span>
+                </button>
+            </nav>
+
+            <!-- Global Controls & Status -->
+            <div class="header-controls">
+                <div class="user-selector-wrapper">
+                    <label for="user-select" class="control-label">User ID:</label>
+                    <input type="text" id="user-select" class="user-input" value="user-1" placeholder="User ID">
+                </div>
+                
+                <div class="status-pill" id="ollama-status-pill" title="Local Ollama Connection Status">
+                    <span class="status-dot offline" id="ollama-status-dot"></span>
+                    <span class="status-text" id="ollama-status-text">Checking Ollama...</span>
+                </div>
+
+                <button class="btn btn-outline-danger btn-sm" id="btn-reset-db" title="Clear all memories and history">
+                    <span class="btn-icon">🗑️</span>
+                    <span>Reset DB</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area with Views -->
+        <main class="app-main">
+            <!-- VIEW 1: CHAT & LIVE PIPELINE INSPECTOR -->
+            <section class="view-panel active" id="view-chat">
+                <div class="chat-layout">
+                    <!-- Left: Chat Stream & Input -->
+                    <div class="chat-main-column">
+                        <!-- Live Pipeline Status Banner -->
+                        <div class="pipeline-flow-banner" id="pipeline-banner">
+                            <div class="pipeline-flow-header">
+                                <span class="flow-title">⚡ REAL-TIME ADAM WRITE & RETRIEVAL PIPELINE</span>
+                                <span class="flow-status" id="pipeline-overall-status">Idle / Awaiting input</span>
+                            </div>
+                            <div class="pipeline-steps-grid">
+                                <div class="step-card" id="step-extract">
+                                    <div class="step-num">1</div>
+                                    <div class="step-info">
+                                        <div class="step-name">Extraction & Scoring</div>
+                                        <div class="step-sub" id="step-extract-detail">Heuristic [0-1]</div>
+                                    </div>
+                                </div>
+                                <div class="step-arrow">➔</div>
+                                <div class="step-card" id="step-consolidation">
+                                    <div class="step-num">2</div>
+                                    <div class="step-info">
+                                        <div class="step-name">Consolidation</div>
+                                        <div class="step-sub" id="step-consolidation-detail">Top-3 Candidates</div>
+                                    </div>
+                                </div>
+                                <div class="step-arrow">➔</div>
+                                <div class="step-card" id="step-retrieval">
+                                    <div class="step-num">3</div>
+                                    <div class="step-info">
+                                        <div class="step-name">Semantic Retrieval</div>
+                                        <div class="step-sub" id="step-retrieval-detail">Cosine Similarity</div>
+                                    </div>
+                                </div>
+                                <div class="step-arrow">➔</div>
+                                <div class="step-card" id="step-llm">
+                                    <div class="step-num">4</div>
+                                    <div class="step-info">
+                                        <div class="step-name">Context & LLM</div>
+                                        <div class="step-sub" id="step-llm-detail">Ollama qwen2.5:3b</div>
+                                    </div>
+                                </div>
+                                <div class="step-arrow">➔</div>
+                                <div class="step-card" id="step-response">
+                                    <div class="step-num">5</div>
+                                    <div class="step-info">
+                                        <div class="step-name">Response Memory</div>
+                                        <div class="step-sub" id="step-response-detail">Evaluation & Tier</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Messages Container -->
+                        <div class="chat-messages-scroll" id="chat-messages">
+                            <!-- Welcome Banner -->
+                            <div class="chat-welcome-card">
+                                <div class="welcome-badge">Adaptive Memory Prototype</div>
+                                <h3>Welcome to ADAM Interactive Chat</h3>
+                                <p>Every interaction undergoes explicit importance scoring, tier classification, candidate consolidation, and memory context retrieval before reaching the local LLM.</p>
+                                <div class="welcome-suggestions">
+                                    <span class="suggestion-title">Try test statements:</span>
+                                    <button class="chip" onclick="window.ADAM.sendSample('My name is Divyansh and I like building fast AI systems in Python.')">"My name is Divyansh and I like building fast AI systems in Python."</button>
+                                    <button class="chip" onclick="window.ADAM.sendSample('I also like using pandas and SQLite for evaluation.')">"I also like using pandas and SQLite for evaluation." (Tests RELATED merge)</button>
+                                    <button class="chip" onclick="window.ADAM.sendSample('Actually, I now use Rust instead of Python.')">"Actually, I now use Rust instead of Python." (Tests CONTRADICTORY update)</button>
+                                    <button class="chip" onclick="window.ADAM.sendSample('What programming languages and tools do I use?')">"What programming languages and tools do I use?" (Tests Semantic Retrieval)</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Input Box -->
+                        <div class="chat-input-area">
+                            <form id="chat-form" class="chat-input-form" onsubmit="return false;">
+                                <textarea id="chat-textarea" placeholder="Type a message or fact to process through ADAM..." rows="2"></textarea>
+                                <button type="submit" id="btn-send-message" class="btn btn-primary btn-send">
+                                    <span>Send</span>
+                                    <span class="btn-icon">➤</span>
+                                </button>
+                            </form>
+                            <div class="input-meta-bar">
+                                <span>Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for newline</span>
+                                <span id="chat-turn-timing" class="timing-indicator"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Dynamic Turn Inspector Drawer -->
+                    <aside class="chat-inspector-column">
+                        <div class="inspector-card">
+                            <div class="inspector-header">
+                                <div class="inspector-title">
+                                    <span class="icon">🔬</span>
+                                    <span>Turn Memory Trace</span>
+                                </div>
+                                <span class="badge badge-subtle" id="trace-turn-id">Turn #0</span>
+                            </div>
+                            <div class="inspector-content" id="turn-inspector-content">
+                                <div class="empty-state-card">
+                                    <span class="empty-icon">💡</span>
+                                    <p>Send a message to view real-time memory extraction, candidate consolidation decisions, and context retrieval scores.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
+            <!-- VIEW 2: MEMORY DASHBOARD (4 TIERS) -->
+            <section class="view-panel" id="view-dashboard">
+                <div class="dashboard-header-bar">
+                    <div class="dashboard-search-group">
+                        <div class="search-input-box">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="memory-search-input" placeholder="Search memory content across tiers...">
+                            <button id="btn-clear-search" class="btn-icon-sm" style="display:none;">✕</button>
+                        </div>
+                        <select id="filter-tier" class="filter-select">
+                            <option value="">All Tiers</option>
+                            <option value="WORKING">Working Memory</option>
+                            <option value="SHORT_TERM">Short-Term Memory</option>
+                            <option value="LONG_TERM">Long-Term Memory</option>
+                            <option value="ARCHIVE">Archive</option>
+                        </select>
+                        <select id="filter-importance" class="filter-select">
+                            <option value="">All Importance</option>
+                            <option value="high">High (≥ 0.70)</option>
+                            <option value="medium">Medium (0.20 - 0.70)</option>
+                            <option value="low">Low (< 0.20)</option>
+                        </select>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button class="btn btn-secondary btn-sm" id="btn-refresh-memories">
+                            <span class="btn-icon">↻</span> Refresh
+                        </button>
+                        <button class="btn btn-primary btn-sm" id="btn-add-memory-manual">
+                            <span class="btn-icon">+</span> New Memory
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4-Tier Kanban Grid -->
+                <div class="tiers-kanban-grid">
+                    <!-- Column 1: Working Memory -->
+                    <div class="tier-column tier-working" data-tier="WORKING">
+                        <div class="tier-column-header">
+                            <div class="tier-title-row">
+                                <span class="tier-indicator"></span>
+                                <h3>WORKING</h3>
+                                <span class="tier-badge-pill" id="count-working">0</span>
+                            </div>
+                            <p class="tier-desc">Active, high-salience facts (Initial Score ≥ 0.70)</p>
+                        </div>
+                        <div class="tier-cards-container" id="cards-working">
+                            <div class="tier-empty-slot">No memories in Working tier</div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Short-Term Memory -->
+                    <div class="tier-column tier-short-term" data-tier="SHORT_TERM">
+                        <div class="tier-column-header">
+                            <div class="tier-title-row">
+                                <span class="tier-indicator"></span>
+                                <h3>SHORT-TERM</h3>
+                                <span class="tier-badge-pill" id="count-short-term">0</span>
+                            </div>
+                            <p class="tier-desc">Moderate salience (Score: 0.20 - 0.70)</p>
+                        </div>
+                        <div class="tier-cards-container" id="cards-short-term">
+                            <div class="tier-empty-slot">No memories in Short-Term tier</div>
+                        </div>
+                    </div>
+
+                    <!-- Column 3: Long-Term Memory -->
+                    <div class="tier-column tier-long-term" data-tier="LONG_TERM">
+                        <div class="tier-column-header">
+                            <div class="tier-title-row">
+                                <span class="tier-indicator"></span>
+                                <h3>LONG-TERM</h3>
+                                <span class="tier-badge-pill" id="count-long-term">0</span>
+                            </div>
+                            <p class="tier-desc">Aged persistent memory (Compressed L1)</p>
+                        </div>
+                        <div class="tier-cards-container" id="cards-long-term">
+                            <div class="tier-empty-slot">No memories in Long-Term tier</div>
+                        </div>
+                    </div>
+
+                    <!-- Column 4: Archive -->
+                    <div class="tier-column tier-archive" data-tier="ARCHIVE">
+                        <div class="tier-column-header">
+                            <div class="tier-title-row">
+                                <span class="tier-indicator"></span>
+                                <h3>ARCHIVE</h3>
+                                <span class="tier-badge-pill" id="count-archive">0</span>
+                            </div>
+                            <p class="tier-desc">Low salience / expired memory (Compressed L2)</p>
+                        </div>
+                        <div class="tier-cards-container" id="cards-archive">
+                            <div class="tier-empty-slot">No memories in Archive</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: MEMORY LIFECYCLE & STATE MACHINE EXPLORER -->
+            <section class="view-panel" id="view-lifecycle">
+                <div class="lifecycle-container">
+                    <!-- Research Concept Callout -->
+                    <div class="concept-banner">
+                        <div class="concept-icon">🧠</div>
+                        <div class="concept-body">
+                            <h3>Key Architectural Principle: Decoupled Intrinsic Value vs. Lifecycle State</h3>
+                            <p>
+                                In ADAM, a memory's <strong>importance score (0.0 to 1.0)</strong> represents its intrinsic informational value, calculated via deterministic Python heuristics (persistent markers, length, recency, recurrence). Its <strong>tier (Working, Short-Term, Long-Term, Archive)</strong> is its operational storage state governed by age, access counts, and compression.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- State Machine Diagram -->
+                    <div class="state-diagram-card">
+                        <div class="card-header-clean">
+                            <h4>ADAM Memory Tier State Transition Graph</h4>
+                            <span class="badge badge-info">Deterministic + Lifecycle Compression</span>
+                        </div>
+                        <div class="diagram-flow-visual">
+                            <!-- New node -->
+                            <div class="diagram-node node-new">
+                                <div class="node-title">NEW INTERACTION</div>
+                                <div class="node-subtitle">Scored via Heuristic [0-1]</div>
+                            </div>
+                            
+                            <!-- Branch arrows -->
+                            <div class="diagram-branches">
+                                <div class="branch-line branch-high">
+                                    <span class="branch-label">Score ≥ 0.70</span>
+                                    ➔
+                                </div>
+                                <div class="branch-line branch-mid">
+                                    <span class="branch-label">0.20 &lt; Score &lt; 0.70</span>
+                                    ➔
+                                </div>
+                                <div class="branch-line branch-low">
+                                    <span class="branch-label">Score ≤ 0.20</span>
+                                    ➔
+                                </div>
+                            </div>
+
+                            <!-- Initial Tier Placement -->
+                            <div class="diagram-tiers-box">
+                                <div class="diagram-node node-tier node-working">
+                                    <div class="node-title">WORKING MEMORY</div>
+                                    <div class="node-detail">Access Count: Active<br>Compression: Level 0</div>
+                                </div>
+                                <div class="diagram-node node-tier node-short-term">
+                                    <div class="node-title">SHORT-TERM MEMORY</div>
+                                    <div class="node-detail">Transitory Context<br>Compression: Level 0</div>
+                                </div>
+                                <div class="diagram-node node-tier node-archive">
+                                    <div class="node-title">ARCHIVE</div>
+                                    <div class="node-detail">Low Priority / Historical<br>Compression: Level 2</div>
+                                </div>
+                            </div>
+
+                            <!-- Transition to Long-Term -->
+                            <div class="diagram-transition-arrow">
+                                <div class="transition-rule">Age ≥ 7 Days + Access ≥ 1<br>➔ Compress L1 (Concise)</div>
+                                ➔
+                            </div>
+
+                            <!-- Long Term Node -->
+                            <div class="diagram-node node-tier node-long-term">
+                                <div class="node-title">LONG-TERM MEMORY</div>
+                                <div class="node-detail">Persistent Fact Store<br>Compression: Level 1</div>
+                            </div>
+
+                            <!-- Inactivity Decay Arrow -->
+                            <div class="diagram-transition-arrow">
+                                <div class="transition-rule">Inactivity &gt; 30 Days<br>➔ Compress L2 (Compact)</div>
+                                ➔
+                            </div>
+
+                            <div class="diagram-node node-tier node-archive-final">
+                                <div class="node-title">ARCHIVE TIER</div>
+                                <div class="node-detail">Selective Forgetting Safeguard</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Memory Lifecycle Audit Tracer -->
+                    <div class="memory-history-tracer-card">
+                        <div class="card-header-clean">
+                            <h4>Interactive Memory History & Lifecycle Tracer</h4>
+                            <p class="subtitle">Select any stored memory to view its immutable audit logs, transition changes, and consolidation history.</p>
+                        </div>
+                        <div class="tracer-layout">
+                            <div class="tracer-selector">
+                                <label for="tracer-memory-select" class="control-label">Choose a Memory to Inspect:</label>
+                                <select id="tracer-memory-select" class="form-select">
+                                    <option value="">-- Select a Memory --</option>
+                                </select>
+                            </div>
+                            <div class="tracer-timeline" id="tracer-timeline-container">
+                                <div class="empty-state-card">
+                                    <span class="empty-icon">📜</span>
+                                    <p>Select a memory above to view its chronological event history.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 4: CONSOLIDATION AUDIT FEED -->
+            <section class="view-panel" id="view-consolidation">
+                <div class="consolidation-container">
+                    <div class="view-intro-bar">
+                        <div class="intro-text">
+                            <h3>LLM-Assisted Consolidation Audit Trail</h3>
+                            <p>To reduce storage redundancy and maintain memory accuracy, ADAM compares every incoming piece of information against similar candidates using 4 deterministic actions:</p>
+                        </div>
+                        <div class="actions-legend">
+                            <span class="legend-badge badge-new"><strong>NEW:</strong> Novel information saved</span>
+                            <span class="legend-badge badge-duplicate"><strong>DUPLICATE:</strong> Ignored, access count boosted</span>
+                            <span class="legend-badge badge-related"><strong>RELATED:</strong> Complementary facts merged</span>
+                            <span class="legend-badge badge-contradictory"><strong>CONTRADICTORY:</strong> Updated with audit history</span>
+                        </div>
+                    </div>
+
+                    <div class="audit-feed-card">
+                        <div class="audit-feed-header">
+                            <h4>Recent Consolidation & Lifecycle Events</h4>
+                            <button class="btn btn-secondary btn-sm" id="btn-refresh-history">
+                                <span class="btn-icon">↻</span> Refresh Feed
+                            </button>
+                        </div>
+                        <div class="audit-feed-list" id="audit-feed-list">
+                            <div class="empty-state-card">
+                                <span class="empty-icon">⚖️</span>
+                                <p>No consolidation events recorded yet. Start a chat or add memories to observe consolidation decisions.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 5: SYSTEM & RESEARCH METRICS PANEL -->
+            <section class="view-panel" id="view-metrics">
+                <div class="metrics-container">
+                    <!-- Research Metrics Header Stats -->
+                    <div class="stats-overview-grid">
+                        <div class="metric-stat-card">
+                            <div class="metric-icon-orb orb-cyan">💾</div>
+                            <div class="metric-data">
+                                <div class="metric-val" id="metric-total-memories">0</div>
+                                <div class="metric-lbl">Total Stored Memories</div>
+                            </div>
+                        </div>
+                        <div class="metric-stat-card">
+                            <div class="metric-icon-orb orb-purple">⭐</div>
+                            <div class="metric-data">
+                                <div class="metric-val" id="metric-avg-importance">0.00</div>
+                                <div class="metric-lbl">Avg Importance Score</div>
+                            </div>
+                        </div>
+                        <div class="metric-stat-card">
+                            <div class="metric-icon-orb orb-emerald">🔄</div>
+                            <div class="metric-data">
+                                <div class="metric-val" id="metric-total-consolidations">0</div>
+                                <div class="metric-lbl">Total Consolidations</div>
+                            </div>
+                        </div>
+                        <div class="metric-stat-card">
+                            <div class="metric-icon-orb orb-amber">📦</div>
+                            <div class="metric-data">
+                                <div class="metric-val" id="metric-compressed-count">0</div>
+                                <div class="metric-lbl">Compressed Memories</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tier Breakdown & Consolidation Breakdown Charts -->
+                    <div class="metrics-charts-grid">
+                        <div class="chart-card">
+                            <div class="card-header-clean">
+                                <h4>Storage Distribution by Memory Tier</h4>
+                                <span class="badge badge-subtle">Real-time count</span>
+                            </div>
+                            <div class="tier-bar-chart">
+                                <div class="tier-bar-row">
+                                    <div class="tier-bar-label">
+                                        <span class="dot dot-cyan"></span> Working Memory
+                                    </div>
+                                    <div class="tier-bar-track">
+                                        <div class="tier-bar-fill fill-cyan" id="bar-working" style="width: 0%"></div>
+                                    </div>
+                                    <span class="tier-bar-val" id="val-working">0</span>
+                                </div>
+                                <div class="tier-bar-row">
+                                    <div class="tier-bar-label">
+                                        <span class="dot dot-emerald"></span> Short-Term
+                                    </div>
+                                    <div class="tier-bar-track">
+                                        <div class="tier-bar-fill fill-emerald" id="bar-short-term" style="width: 0%"></div>
+                                    </div>
+                                    <span class="tier-bar-val" id="val-short-term">0</span>
+                                </div>
+                                <div class="tier-bar-row">
+                                    <div class="tier-bar-label">
+                                        <span class="dot dot-purple"></span> Long-Term
+                                    </div>
+                                    <div class="tier-bar-track">
+                                        <div class="tier-bar-fill fill-purple" id="bar-long-term" style="width: 0%"></div>
+                                    </div>
+                                    <span class="tier-bar-val" id="val-long-term">0</span>
+                                </div>
+                                <div class="tier-bar-row">
+                                    <div class="tier-bar-label">
+                                        <span class="dot dot-amber"></span> Archive
+                                    </div>
+                                    <div class="tier-bar-track">
+                                        <div class="tier-bar-fill fill-amber" id="bar-archive" style="width: 0%"></div>
+                                    </div>
+                                    <span class="tier-bar-val" id="val-archive">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="card-header-clean">
+                                <h4>Consolidation Operations Breakdown</h4>
+                                <span class="badge badge-subtle">Audit events</span>
+                            </div>
+                            <div class="consolidation-stats-list">
+                                <div class="cons-stat-item">
+                                    <div class="cons-type">
+                                        <span class="badge badge-duplicate">DUPLICATE</span>
+                                        <span>Redundant facts avoided</span>
+                                    </div>
+                                    <span class="cons-count" id="count-duplicate">0</span>
+                                </div>
+                                <div class="cons-stat-item">
+                                    <div class="cons-type">
+                                        <span class="badge badge-related">RELATED</span>
+                                        <span>Complementary facts merged</span>
+                                    </div>
+                                    <span class="cons-count" id="count-related">0</span>
+                                </div>
+                                <div class="cons-stat-item">
+                                    <div class="cons-type">
+                                        <span class="badge badge-contradictory">CONTRADICTORY</span>
+                                        <span>Updated conflicting facts</span>
+                                    </div>
+                                    <span class="cons-count" id="count-contradictory">0</span>
+                                </div>
+                                <div class="cons-stat-item">
+                                    <div class="cons-type">
+                                        <span class="badge badge-info">COMPRESSED</span>
+                                        <span>Tier compression transitions</span>
+                                    </div>
+                                    <span class="cons-count" id="count-compressed-op">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System & Environment Configuration -->
+                    <div class="system-config-card">
+                        <div class="card-header-clean">
+                            <h4>System & Environment Configuration</h4>
+                            <span class="badge badge-success">M2 Optimized (8 GB RAM)</span>
+                        </div>
+                        <div class="config-grid">
+                            <div class="config-item">
+                                <span class="config-lbl">Ollama Host:</span>
+                                <span class="config-val" id="sys-ollama-host">-</span>
+                            </div>
+                            <div class="config-item">
+                                <span class="config-lbl">Ollama Model:</span>
+                                <span class="config-val" id="sys-ollama-model">-</span>
+                            </div>
+                            <div class="config-item">
+                                <span class="config-lbl">Embedding Model:</span>
+                                <span class="config-val" id="sys-embedding-model">all-MiniLM-L6-v2 (384-dim)</span>
+                            </div>
+                            <div class="config-item">
+                                <span class="config-lbl">Database Storage:</span>
+                                <span class="config-val" id="sys-database-path">data/adam.db (SQLite)</span>
+                            </div>
+                            <div class="config-item">
+                                <span class="config-lbl">Consolidation Candidate Threshold:</span>
+                                <span class="config-val" id="sys-sim-threshold">Min Cosine Sim ≥ 0.35</span>
+                            </div>
+                            <div class="config-item">
+                                <span class="config-lbl">Max Candidates Passed to LLM:</span>
+                                <span class="config-val" id="sys-candidate-limit">3 candidates max</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: ADD MANUAL MEMORY -->
+    <div class="modal-overlay" id="modal-add-memory" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Store New Memory</h3>
+                <button class="modal-close-btn" onclick="window.ADAM.closeModals()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="manual-memory-user" class="form-label">User ID</label>
+                    <input type="text" id="manual-memory-user" class="form-input" value="user-1">
+                </div>
+                <div class="form-group">
+                    <label for="manual-memory-content" class="form-label">Memory Content</label>
+                    <textarea id="manual-memory-content" class="form-textarea" rows="4" placeholder="Enter fact or statement to store..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="window.ADAM.closeModals()">Cancel</button>
+                <button class="btn btn-primary" id="btn-submit-manual-memory">Process & Store</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: MEMORY DETAILS & HISTORY -->
+    <div class="modal-overlay" id="modal-memory-details" style="display:none;">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3>Memory Inspection & Audit Trail</h3>
+                <button class="modal-close-btn" onclick="window.ADAM.closeModals()">✕</button>
+            </div>
+            <div class="modal-body" id="memory-details-modal-body">
+                <!-- Injected by JS -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="window.ADAM.closeModals()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: MANUAL TIER TRANSITION -->
+    <div class="modal-overlay" id="modal-tier-transition" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Explicit Lifecycle Transition</h3>
+                <button class="modal-close-btn" onclick="window.ADAM.closeModals()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="transition-memory-summary" class="text-subtle"></p>
+                <input type="hidden" id="transition-memory-id">
+                <div class="form-group">
+                    <label for="target-tier-select" class="form-label">Target Lifecycle Tier</label>
+                    <select id="target-tier-select" class="form-select">
+                        <option value="WORKING">WORKING (Active, Compression Level 0)</option>
+                        <option value="SHORT_TERM">SHORT-TERM (Transitory, Compression Level 0)</option>
+                        <option value="LONG_TERM">LONG-TERM (Persistent, Compression Level 1)</option>
+                        <option value="ARCHIVE">ARCHIVE (Historical, Compression Level 2)</option>
+                    </select>
+                </div>
+                <div class="alert-box alert-info">
+                    <strong>Note:</strong> Transitioning to Long-Term or Archive triggers LLM lifecycle compression while preserving the original importance score and recording an immutable audit trail.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="window.ADAM.closeModals()">Cancel</button>
+                <button class="btn btn-primary" id="btn-submit-transition">Apply Transition</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: RESET DATABASE CONFIRMATION -->
+    <div class="modal-overlay" id="modal-reset-confirm" style="display:none;">
+        <div class="modal-card modal-danger">
+            <div class="modal-header">
+                <h3>⚠️ Reset Research Database</h3>
+                <button class="modal-close-btn" onclick="window.ADAM.closeModals()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to completely clear the local SQLite database?</p>
+                <p class="text-danger">This will permanently erase all stored memories and historical consolidation audit records.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="window.ADAM.closeModals()">Cancel</button>
+                <button class="btn btn-danger" id="btn-confirm-reset">Yes, Clear All Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
