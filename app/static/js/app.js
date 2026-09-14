@@ -175,7 +175,7 @@
 
     function getImportanceCategory(score) {
         if (score >= 0.70) return { label: 'High', class: 'badge-imp-high', fillClass: 'fill-high' };
-        if (score >= 0.20) return { label: 'Medium', class: 'badge-imp-med', fillClass: 'fill-med' };
+        if (score > 0.30) return { label: 'Medium', class: 'badge-imp-med', fillClass: 'fill-med' };
         return { label: 'Low', class: 'badge-imp-low', fillClass: 'fill-low' };
     }
 
@@ -199,6 +199,7 @@
             case 'CONTRADICTORY': return { label: 'CONTRADICTORY (Updated)', class: 'badge-contradictory' };
             case 'COMPRESSED': return { label: 'COMPRESSED', class: 'badge-compression' };
             case 'EVALUATED': return { label: 'EVALUATED', class: 'badge-subtle' };
+            case 'FILLER': return { label: 'IGNORED (Filler)', class: 'badge-subtle' };
             default: return { label: act, class: 'badge-subtle' };
         }
     }
@@ -368,6 +369,22 @@
         const container = document.getElementById(`user-badges-${turnId}`);
         if (!container || !userMemory) return;
 
+        if (!userMemory.is_stored || userMemory.action === 'FILLER') {
+            container.innerHTML = `
+                <span class="badge badge-subtle" title="Trivial greeting or conversational filler was not stored in memory">
+                    🚫 Greeting / Filler (Ignored)
+                </span>
+                <button class="btn-details-toggle" onclick="window.ADAM.toggleDetails('user-details-${turnId}')">
+                    <span>Details</span> ▾
+                </button>
+                <div class="adam-details-drawer" id="user-details-${turnId}">
+                    <div class="details-section-title">Filter Reason</div>
+                    <p style="color: #cbd5e1; margin-bottom: 0.5rem;">${escapeHtml(userMemory.decision_reason || 'Greeting or conversational small talk was excluded from storage.')}</p>
+                </div>
+            `;
+            return;
+        }
+
         const impCat = getImportanceCategory(userMemory.importance_score);
         const tierBadge = getTierBadge(userMemory.tier);
         const actBadge = getActionBadge(userMemory.action);
@@ -377,7 +394,7 @@
             <span class="badge ${impCat.class}" title="Intrinsic Information Value [0-1]">
                 ⭐ Importance: ${userMemory.importance_score.toFixed(2)} (${impCat.label})
             </span>
-            <span class="badge ${tierBadge.class}" title="Current Storage Lifecycle Tier">
+            <span class="badge ${tierBadge.class}" title="Storage Tier">
                 🗄️ ${tierBadge.label}
             </span>
             <span class="badge ${actBadge.class}" title="Consolidation Action">
@@ -414,28 +431,42 @@
         const assistantRow = document.createElement('div');
         assistantRow.className = 'chat-message-row assistant-row';
 
-        const impCat = getImportanceCategory(assistantMemory?.importance_score || 0);
-        const tierBadge = getTierBadge(assistantMemory?.tier || 'WORKING');
         const retrievedCount = retrievedMemories ? retrievedMemories.length : 0;
+        const isStored = assistantMemory && assistantMemory.is_stored;
+        const impScore = assistantMemory?.importance_score || 0;
+        const impCat = getImportanceCategory(impScore);
+        const tierBadge = getTierBadge(assistantMemory?.tier || 'WORKING');
+        const actBadge = getActionBadge(assistantMemory?.action || 'NEW');
 
         assistantRow.innerHTML = `
             <div class="avatar assistant-avatar">A</div>
             <div class="message-bubble-wrapper">
                 <div class="message-bubble">${escapeHtml(responseText)}</div>
                 <div class="message-badges-bar">
-                    <span class="badge ${impCat.class}">
-                        ⭐ Response Salience: ${(assistantMemory?.importance_score || 0).toFixed(2)} (${impCat.label})
-                    </span>
-                    <span class="badge ${tierBadge.class}">
-                        🗄️ ${tierBadge.label}
-                    </span>
+                    ${isStored ? `
+                        <span class="badge ${impCat.class}">
+                            ⭐ Stored: ${impScore.toFixed(2)} (${impCat.label})
+                        </span>
+                        <span class="badge ${tierBadge.class}">
+                            🗄️ ${tierBadge.label}
+                        </span>
+                        <span class="badge ${actBadge.class}">
+                            ⚖️ ${actBadge.label}
+                        </span>
+                    ` : `
+                        <span class="badge badge-subtle" title="LLM pleasantry or boilerplate was not stored">
+                            🚫 Boilerplate (Ignored)
+                        </span>
+                    `}
                     <span class="badge badge-subtle" title="Retrieved memories injected into context">
                         🔍 ${retrievedCount} Injected ${retrievedCount === 1 ? 'Memory' : 'Memories'}
                     </span>
                     <button class="btn-details-toggle" onclick="window.ADAM.toggleDetails('asst-details-${turnId}')">
-                        <span>Retrieved Context</span> ▾
+                        <span>Context & Storage</span> ▾
                     </button>
                     <div class="adam-details-drawer" id="asst-details-${turnId}">
+                        <div class="details-section-title">Assistant Memory Decision</div>
+                        <p style="color: #cbd5e1; margin-bottom: 0.5rem;">${escapeHtml(assistantMemory?.decision_reason || (isStored ? 'Response contained substantive information and was stored.' : 'Boilerplate filtered.'))}</p>
                         <div class="details-section-title">Retrieved Memories for Query Context (${retrievedCount})</div>
                         ${retrievedCount > 0 ? retrievedMemories.map(r => `
                             <div class="details-candidate-item">
@@ -457,47 +488,63 @@
     function renderTurnInspector(turnId, userQuery, turnResult) {
         elements.traceTurnId.textContent = `Turn #${turnId}`;
         const uMem = turnResult.user_memory;
+        const aMem = turnResult.assistant_memory;
         const retrieved = turnResult.retrieved_memories || [];
 
         elements.turnInspectorContent.innerHTML = `
-            <!-- Extraction & Scoring Block -->
+            <!-- User Extraction & Scoring Block -->
             <div style="margin-bottom: 1rem;">
-                <div class="details-section-title">1. Write Path Extraction & Scoring</div>
+                <div class="details-section-title">1. User Message Write Path</div>
                 <div style="background: rgba(0,0,0,0.25); padding: 0.65rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
-                        <span style="font-size:0.75rem; color:var(--text-muted);">Heuristic Score:</span>
-                        <span style="font-size:0.8rem; font-weight:700; color:#c084fc;">${uMem.importance_score.toFixed(4)}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
-                        <span style="font-size:0.75rem; color:var(--text-muted);">Initial Placement:</span>
-                        <span class="badge ${getTierBadge(uMem.tier).class}">${uMem.tier}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between;">
-                        <span style="font-size:0.75rem; color:var(--text-muted);">Storage Action:</span>
-                        <span class="badge ${getActionBadge(uMem.action).class}">${uMem.action}</span>
-                    </div>
+                    ${uMem.is_stored ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Importance:</span>
+                            <span style="font-size:0.8rem; font-weight:700; color:#c084fc;">${uMem.importance_score.toFixed(4)}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Storage Tier:</span>
+                            <span class="badge ${getTierBadge(uMem.tier).class}">${uMem.tier}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Action:</span>
+                            <span class="badge ${getActionBadge(uMem.action).class}">${uMem.action}</span>
+                        </div>
+                    ` : `
+                        <div style="font-size:0.75rem; color:#94a3b8;">
+                            <strong>Filtered:</strong> ${escapeHtml(uMem.decision_reason || 'Greeting or conversational noise')}
+                        </div>
+                    `}
                 </div>
             </div>
 
-            <!-- Consolidation Analysis Block -->
+            <!-- Assistant Memory Storage Block -->
             <div style="margin-bottom: 1rem;">
-                <div class="details-section-title">2. LLM Consolidation Decision</div>
+                <div class="details-section-title">2. Assistant Response Write Path</div>
                 <div style="background: rgba(0,0,0,0.25); padding: 0.65rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-                    <div style="font-size:0.75rem; color:#cbd5e1; margin-bottom:0.4rem;">
-                        <strong>Reason:</strong> ${escapeHtml(uMem.decision_reason || 'No candidate collision')}
-                    </div>
-                    <div style="font-size:0.7rem; color:var(--text-muted);">Evaluated ${uMem.candidates.length} candidate memories:</div>
-                    ${uMem.candidates.map(c => `
-                        <div style="font-size:0.7rem; font-family:var(--font-mono); color:#94a3b8; margin-top:0.25rem; border-left:2px solid #38bdf8; padding-left:0.35rem;">
-                            [Sim: ${c.similarity}] ${escapeHtml(c.content.substring(0, 60))}...
+                    ${aMem && aMem.is_stored ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Importance:</span>
+                            <span style="font-size:0.8rem; font-weight:700; color:#38bdf8;">${aMem.importance_score.toFixed(4)}</span>
                         </div>
-                    `).join('')}
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Storage Tier:</span>
+                            <span class="badge ${getTierBadge(aMem.tier).class}">${aMem.tier}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Action:</span>
+                            <span class="badge ${getActionBadge(aMem.action).class}">${aMem.action}</span>
+                        </div>
+                    ` : `
+                        <div style="font-size:0.75rem; color:#94a3b8;">
+                            <strong>Boilerplate Ignored:</strong> ${escapeHtml(aMem?.decision_reason || 'No substantive information to persist')}
+                        </div>
+                    `}
                 </div>
             </div>
 
             <!-- Retrieval Context Block -->
             <div style="margin-bottom: 1rem;">
-                <div class="details-section-title">3. Retrieved Memories for LLM (${retrieved.length})</div>
+                <div class="details-section-title">3. Retrieved Memories for LLM Context (${retrieved.length})</div>
                 <div style="display:flex; flex-direction:column; gap:0.4rem;">
                     ${retrieved.length > 0 ? retrieved.map(r => `
                         <div style="background: rgba(0,0,0,0.25); padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size:0.75rem;">
@@ -533,8 +580,8 @@
             // Apply client importance filter if set
             let filtered = memories;
             if (impFilter === 'high') filtered = memories.filter(m => m.importance_score >= 0.70);
-            if (impFilter === 'medium') filtered = memories.filter(m => m.importance_score >= 0.20 && m.importance_score < 0.70);
-            if (impFilter === 'low') filtered = memories.filter(m => m.importance_score < 0.20);
+            if (impFilter === 'medium') filtered = memories.filter(m => m.importance_score > 0.30 && m.importance_score < 0.70);
+            if (impFilter === 'low') filtered = memories.filter(m => m.importance_score <= 0.30);
 
             renderMemoryDashboard(filtered);
             elements.headerMemoryCount.textContent = memories.length;

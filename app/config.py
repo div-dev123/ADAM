@@ -13,11 +13,13 @@ class Settings:
     embedding_model: str = "all-MiniLM-L6-v2"
     default_top_k: int = 5
     max_top_k: int = 20
-    importance_persistent_weight: float = 0.55
-    importance_length_weight: float = 0.20
-    importance_recurrence_weight: float = 0.15
-    importance_recency_weight: float = 0.10
-    initial_archive_threshold: float = 0.20
+    importance_intent_weight: float = 0.35
+    importance_specificity_weight: float = 0.25
+    importance_durability_weight: float = 0.20
+    importance_salience_weight: float = 0.10
+    importance_recurrence_weight: float = 0.05
+    importance_recency_weight: float = 0.05
+    initial_archive_threshold: float = 0.30
     initial_long_term_threshold: float = 0.70
     working_to_long_term_age: timedelta = timedelta(days=7)
     working_to_long_term_min_accesses: int = 1
@@ -37,8 +39,14 @@ class Settings:
             embedding_model=os.getenv(
                 "EMBEDDING_MODEL", "all-MiniLM-L6-v2"
             ),
+            importance_intent_weight=float(os.getenv("IMPORTANCE_INTENT_WEIGHT", "0.35")),
+            importance_specificity_weight=float(os.getenv("IMPORTANCE_SPECIFICITY_WEIGHT", "0.25")),
+            importance_durability_weight=float(os.getenv("IMPORTANCE_DURABILITY_WEIGHT", "0.20")),
+            importance_salience_weight=float(os.getenv("IMPORTANCE_SALIENCE_WEIGHT", "0.10")),
+            importance_recurrence_weight=float(os.getenv("IMPORTANCE_RECURRENCE_WEIGHT", "0.05")),
+            importance_recency_weight=float(os.getenv("IMPORTANCE_RECENCY_WEIGHT", "0.05")),
             initial_archive_threshold=float(
-                os.getenv("INITIAL_ARCHIVE_THRESHOLD", "0.20")
+                os.getenv("INITIAL_ARCHIVE_THRESHOLD", "0.30")
             ),
             initial_long_term_threshold=float(os.getenv("INITIAL_LONG_TERM_THRESHOLD", "0.70")),
             working_to_long_term_age=timedelta(

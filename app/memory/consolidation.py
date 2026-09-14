@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from app.llm.client import LLMClient
+from app.memory.importance import is_filler
 from app.memory.models import Memory, utc_now
 from app.memory.storage import SQLiteStorage, create_memory
 from app.retrieval.similarity import cosine_similarity
@@ -24,11 +25,26 @@ class ConsolidationService:
         self.lifecycle_policy = lifecycle_policy
         self.config = config
 
-    def process(self, user_id: str, content: str) -> Memory:
+    def process(self, user_id: str, content: str) -> Memory | None:
         trace = self.process_with_trace(user_id, content)
-        return trace["memory"]
+        return trace.get("memory")
 
     def process_with_trace(self, user_id: str, content: str) -> dict:
+        filler_detected, filler_reason = is_filler(content)
+        if filler_detected:
+            return {
+                "memory": None,
+                "action": "FILLER",
+                "decision_reason": f"Filtered greeting or conversational filler ({filler_reason})",
+                "merged_content": None,
+                "old_content": None,
+                "candidates": [],
+                "is_stored": False,
+                "importance_score": 0.0,
+                "tier": None,
+                "compression_level": 0,
+            }
+
         embedding = self.embeddings.encode(content)
         candidates = self._candidates(user_id, embedding)
         candidates_info = [

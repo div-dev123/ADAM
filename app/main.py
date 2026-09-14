@@ -51,8 +51,10 @@ def build_storage() -> SQLiteStorage:
 
 def build_retrieval_service() -> RetrievalService:
     weights = ImportanceWeights(
-        persistent=settings.importance_persistent_weight,
-        length=settings.importance_length_weight,
+        intent=settings.importance_intent_weight,
+        specificity=settings.importance_specificity_weight,
+        durability=settings.importance_durability_weight,
+        salience=settings.importance_salience_weight,
         recurrence=settings.importance_recurrence_weight,
         recency=settings.importance_recency_weight,
     )
@@ -144,6 +146,13 @@ def store_memory(request: MemoryCreateRequest):
         memory = app.state.retrieval.store_memory(request.user_id, request.content)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    if memory is None:
+        return {
+            "message": "Greeting or filler ignored - no memory created",
+            "is_stored": False,
+            "importance_score": 0.0,
+            "tier": None,
+        }
     return memory_to_response(memory)
 
 

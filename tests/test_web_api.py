@@ -21,6 +21,8 @@ class MockModel:
             return [0.0, 1.0]
         if "python" in text.lower():
             return [1.0, 0.0]
+        if any(kw in text.lower() for kw in ["lsm", "lsm-trees", "memory-mapped", "throughput", "concurrency"]):
+            return [-0.5, 0.5]  # ~0 cosine similarity with [0.5,0.5] - avoids DUPLICATE
         return [0.5, 0.5]
 
 
@@ -217,5 +219,79 @@ def test_technical_preferences_and_project_importance_scoring(tmp_path):
     res2 = client.post("/memory", json={"user_id": "user-1", "content": "i am currently doing a project of memory management"}).json()
     assert res2["importance_score"] >= 0.70
     assert res2["tier"] == "WORKING"
+
+
+def test_chat_pipeline_ignores_greetings_and_boilerplates(tmp_path):
+    retrieval = create_test_retrieval(tmp_path)
+    # Mock LLM returning boilerplate
+    retrieval.llm.generate_chat_response = lambda user_message, retrieved_memories=None, chat_history=None: "Sure! How can I help you today?"
+    app.state.retrieval = retrieval
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat",
+        json={"user_id": "user-test", "message": "hello"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["user_memory"]["is_stored"] is False
+    assert data["user_memory"]["action"] == "FILLER"
+    assert data["user_memory"]["memory"] is None
+
+    assert data["assistant_memory"]["is_stored"] is False
+    assert data["assistant_memory"]["action"] == "FILLER"
+    assert data["assistant_memory"]["memory"] is None
+
+    assert retrieval.storage.count() == 0
+
+
+def test_chat_pipeline_stores_both_user_and_informative_llm_response(tmp_path):
+    retrieval = create_test_retrieval(tmp_path)
+    # Mock LLM returning informative technical fact
+    retrieval.llm.generate_chat_response = lambda user_message, retrieved_memories=None, chat_history=None: (
+        "In Rust, database engines use LSM-trees and memory-mapped files for high throughput and safe concurrency."
+    )
+    app.state.retrieval = retrieval
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat",
+        json={"user_id": "user-test", "message": "I am building a database system in Rust"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # User memory stored in WORKING
+    assert data["user_memory"]["is_stored"] is True
+    assert data["user_memory"]["tier"] == "WORKING"
+    assert data["user_memory"]["memory"] is not None
+
+    # Assistant informative response stored
+    assert data["assistant_memory"]["is_stored"] is True
+    assert data["assistant_memory"]["tier"] in ["WORKING", "SHORT_TERM"]
+    assert data["assistant_memory"]["memory"] is not None
+
+    # Both stored in database
+    assert retrieval.storage.count() == 2
+
+
+def test_chat_endpoint_stores_low_value_non_filler_in_archive(tmp_path):
+    retrieval = create_test_retrieval(tmp_path)
+    retrieval.llm.generate_chat_response = lambda user_message, retrieved_memories=None, chat_history=None: "Understood."
+    app.state.retrieval = retrieval
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat",
+        json={"user_id": "user-test", "message": "The room temperature is 21 degrees today"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["user_memory"]["is_stored"] is True
+    assert data["user_memory"]["tier"] == "ARCHIVE"
+    assert data["user_memory"]["importance_score"] <= 0.30
+
 
 

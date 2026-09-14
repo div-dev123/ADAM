@@ -302,3 +302,61 @@ def test_short_term_to_archive_uses_stronger_compression(tmp_path):
     assert result.compression_level == 2
     assert result.importance_score == importance
     assert llm.compression_levels == [2]
+
+
+def test_greetings_and_trivial_acknowledgements_produce_no_memory(tmp_path):
+    service = build_service(tmp_path)
+    
+    greetings = ["hi", "hello", "hey there", "good morning", "howdy"]
+    acknowledgements = ["ok", "okay", "thanks", "thank you", "cool", "bye", "sounds good"]
+
+    for msg in greetings + acknowledgements:
+        stored = service.store_memory("user-1", msg)
+        assert stored is None
+        trace = service.store_memory_with_trace("user-1", msg)
+        assert trace["is_stored"] is False
+        assert trace["action"] == "FILLER"
+        assert trace["memory"] is None
+        assert trace["importance_score"] == 0.0
+
+    assert service.storage.count() == 0
+
+
+def test_low_value_useful_information_enters_archive_directly(tmp_path):
+    service = build_service(tmp_path)
+    
+    low_val_1 = service.store_memory("user-1", "The room temperature is 21 degrees today")
+    low_val_2 = service.store_memory("user-1", "I had a sandwich for lunch.")
+
+    assert low_val_1 is not None
+    assert low_val_1.importance_score <= 0.30
+    assert low_val_1.tier == ARCHIVE
+
+    assert low_val_2 is not None
+    assert low_val_2.importance_score <= 0.30
+    assert low_val_2.tier == ARCHIVE
+
+    assert service.storage.count() == 2
+
+
+def test_medium_value_information_enters_short_term(tmp_path):
+    service = build_service(tmp_path)
+    
+    msg = service.store_memory("user-1", "We discussed the sprint goals and assigned tasks to teammates.")
+    assert msg is not None
+    assert 0.30 < msg.importance_score < 0.70
+    assert msg.tier == SHORT_TERM
+
+
+def test_high_value_persistent_information_enters_working(tmp_path):
+    service = build_service(tmp_path)
+    
+    mem1 = service.store_memory("user-1", "I love dsa in java")
+    mem2 = service.store_memory("user-1", "i am currently doing a project of memory management")
+    mem3 = service.store_memory("user-1", "My goal is to pass the AWS certification.")
+
+    for mem in [mem1, mem2, mem3]:
+        assert mem is not None
+        assert mem.importance_score >= 0.70
+        assert mem.tier == WORKING
+

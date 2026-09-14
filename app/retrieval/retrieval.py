@@ -1,9 +1,9 @@
-"""Phase 1 semantic retrieval service."""
+"""Phase 1 semantic retrieval service with dual-turn memory storage."""
 
 from app.memory.models import Memory, utc_now
 from app.memory.compression import CompressionService
 from app.memory.consolidation import ConsolidationConfig, ConsolidationService
-from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
+from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights, is_filler
 from app.memory.storage import SQLiteStorage, create_memory
 from app.memory.tiers import TierAssigner
 from app.retrieval.embeddings import EmbeddingService
@@ -39,20 +39,27 @@ class RetrievalService:
             if llm else None
         )
 
-    def store_memory(self, user_id: str, content: str) -> Memory:
-        if self.consolidation:
-            return self.consolidation.process(user_id, content)
-        memory = create_memory(user_id, content, self.embeddings.encode(content))
-        memory.importance_score = self.scorer.score(
-            memory.content,
-            access_count=memory.access_count,
-            created_at=memory.created_at,
-        )
-        memory.tier = self.tier_assigner.initial_tier(memory.importance_score)
-        return self.storage.save_memory(memory)
+    def store_memory(self, user_id: str, content: str) -> Memory | None:
+        trace = self.store_memory_with_trace(user_id, content)
+        return trace.get("memory")
 
     def store_memory_with_trace(self, user_id: str, content: str) -> dict:
         """Store memory and return complete decision metadata for research inspection."""
+        filler_detected, filler_reason = is_filler(content)
+        if filler_detected:
+            return {
+                "memory": None,
+                "action": "FILLER",
+                "decision_reason": f"Filtered greeting or conversational filler ({filler_reason})",
+                "merged_content": None,
+                "old_content": None,
+                "candidates": [],
+                "is_stored": False,
+                "importance_score": 0.0,
+                "tier": None,
+                "compression_level": 0,
+            }
+
         if self.consolidation:
             return self.consolidation.process_with_trace(user_id, content)
 
@@ -105,21 +112,28 @@ class RetrievalService:
         top_k: int = 5,
         chat_history: list[dict] | None = None,
     ) -> dict:
-        """Execute a full conversational turn with transparent memory processing."""
+        """Execute a full conversational turn with transparent memory processing for both user and LLM."""
         pipeline_stages = []
 
         # 1. User Message Memory Processing (Extraction, Importance, Tier, Consolidation)
         user_memory_trace = self.store_memory_with_trace(user_id, message)
-        pipeline_stages.append({
-            "stage": "Memory Extraction & Scoring",
-            "status": "completed",
-            "detail": f"Importance: {user_memory_trace['importance_score']:.2f} ({user_memory_trace['tier']})",
-        })
-        pipeline_stages.append({
-            "stage": "Consolidation Check",
-            "status": "completed",
-            "detail": f"Action: {user_memory_trace['action']} | Candidates: {len(user_memory_trace['candidates'])}",
-        })
+        if user_memory_trace["is_stored"]:
+            pipeline_stages.append({
+                "stage": "User Message Memory Analysis & Scoring",
+                "status": "completed",
+                "detail": f"Importance: {user_memory_trace['importance_score']:.2f} (Tier: {user_memory_trace['tier']})",
+            })
+            pipeline_stages.append({
+                "stage": "User Consolidation Check",
+                "status": "completed",
+                "detail": f"Action: {user_memory_trace['action']} | Candidates: {len(user_memory_trace['candidates'])}",
+            })
+        else:
+            pipeline_stages.append({
+                "stage": "User Message Memory Analysis",
+                "status": "completed",
+                "detail": f"Ignored greeting / filler ({user_memory_trace['decision_reason']})",
+            })
 
         # 2. Semantic Memory Retrieval for User Query
         retrieved_raw = self.search(user_id, message, top_k=top_k)
@@ -153,34 +167,44 @@ class RetrievalService:
                 )
         else:
             response_text = (
-                f"Memory processed successfully in ADAM. (Ollama client not configured for chat generation)"
+                "Memory processed successfully in ADAM. (Ollama client not configured for chat generation)"
             )
 
         pipeline_stages[-1]["status"] = "completed"
         pipeline_stages[-1]["detail"] = f"Generated {len(response_text)} chars"
 
-        # 4. Assistant Response Memory Processing (Evaluation & Optional Storage)
-        assistant_importance = self.scorer.score(response_text)
-        assistant_tier = self.tier_assigner.initial_tier(assistant_importance)
-        
-        # We record response memory if it has factual weight / moderate importance
-        assistant_memory_trace = {
-            "content": response_text,
-            "importance_score": assistant_importance,
-            "tier": assistant_tier,
-            "is_stored": False,
-            "action": "EVALUATED",
-            "decision_reason": "Response evaluated for factual persistence",
-            "compression_level": 0,
-        }
-
-        pipeline_stages.append({
-            "stage": "Response Memory Processing",
-            "status": "completed",
-            "detail": f"Response Importance: {assistant_importance:.2f} (Tier: {assistant_tier})",
-        })
+        # 4. Assistant Response Memory Processing (Analysis & Storage)
+        assistant_is_filler, filler_reason = is_filler(response_text)
+        if assistant_is_filler:
+            assistant_memory_trace = {
+                "memory": None,
+                "action": "FILLER",
+                "decision_reason": f"Filtered assistant boilerplate or greeting ({filler_reason})",
+                "merged_content": None,
+                "old_content": None,
+                "candidates": [],
+                "is_stored": False,
+                "importance_score": 0.0,
+                "tier": None,
+                "compression_level": 0,
+            }
+            pipeline_stages.append({
+                "stage": "Response Memory Processing",
+                "status": "completed",
+                "detail": f"Ignored boilerplate response ({filler_reason})",
+            })
+        else:
+            # Informative LLM response is analyzed and stored in memory
+            assistant_memory_trace = self.store_memory_with_trace(user_id, response_text)
+            pipeline_stages.append({
+                "stage": "Response Memory Processing",
+                "status": "completed",
+                "detail": f"Stored Response Memory: {assistant_memory_trace['importance_score']:.2f} (Tier: {assistant_memory_trace['tier']}, Action: {assistant_memory_trace['action']})",
+            })
 
         def memory_dict(mem):
+            if mem is None:
+                return None
             return {
                 "memory_id": mem.memory_id,
                 "user_id": mem.user_id,
@@ -197,18 +221,21 @@ class RetrievalService:
         user_mem_obj = user_memory_trace.get("memory")
         user_mem_data = memory_dict(user_mem_obj) if user_mem_obj else None
 
+        assistant_mem_obj = assistant_memory_trace.get("memory")
+        assistant_mem_data = memory_dict(assistant_mem_obj) if assistant_mem_obj else None
+
         return {
             "response": response_text,
             "user_memory": {
                 "memory": user_mem_data,
-                "action": user_memory_trace["action"],
+                "action": user_memory_trace.get("action", "NONE"),
                 "decision_reason": user_memory_trace.get("decision_reason", ""),
                 "merged_content": user_memory_trace.get("merged_content"),
                 "old_content": user_memory_trace.get("old_content"),
                 "candidates": user_memory_trace.get("candidates", []),
-                "is_stored": user_memory_trace.get("is_stored", True),
-                "importance_score": user_memory_trace["importance_score"],
-                "tier": user_memory_trace["tier"],
+                "is_stored": user_memory_trace.get("is_stored", False),
+                "importance_score": user_memory_trace.get("importance_score", 0.0),
+                "tier": user_memory_trace.get("tier"),
                 "compression_level": user_memory_trace.get("compression_level", 0),
             },
             "retrieved_memories": [
@@ -218,7 +245,18 @@ class RetrievalService:
                 }
                 for item in retrieved_raw
             ],
-            "assistant_memory": assistant_memory_trace,
+            "assistant_memory": {
+                "memory": assistant_mem_data,
+                "action": assistant_memory_trace.get("action", "NONE"),
+                "decision_reason": assistant_memory_trace.get("decision_reason", ""),
+                "merged_content": assistant_memory_trace.get("merged_content"),
+                "old_content": assistant_memory_trace.get("old_content"),
+                "candidates": assistant_memory_trace.get("candidates", []),
+                "is_stored": assistant_memory_trace.get("is_stored", False),
+                "importance_score": assistant_memory_trace.get("importance_score", 0.0),
+                "tier": assistant_memory_trace.get("tier"),
+                "compression_level": assistant_memory_trace.get("compression_level", 0),
+            },
             "pipeline_stages": pipeline_stages,
             "llm_error": llm_error,
         }

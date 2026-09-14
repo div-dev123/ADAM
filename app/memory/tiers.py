@@ -16,7 +16,7 @@ ARCHIVE = "ARCHIVE"
 class LifecyclePolicy:
     """Initial placement and independent lifecycle transition rules."""
 
-    initial_archive_threshold: float = 0.20
+    initial_archive_threshold: float = 0.30
     initial_long_term_threshold: float = 0.70
     working_to_long_term_age: timedelta = timedelta(days=7)
     working_to_long_term_min_accesses: int = 1
