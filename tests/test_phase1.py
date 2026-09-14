@@ -1,9 +1,12 @@
 import json
 import sqlite3
+import pytest
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.llm.client import ConsolidationDecision
+from app.memory.consolidation import ConsolidationConfig
 from app.memory.importance import HeuristicImportanceScorer
 from app.memory.models import Memory
 from app.memory.storage import SQLiteStorage, create_memory
@@ -15,6 +18,8 @@ from app.retrieval.retrieval import RetrievalService
 class FakeModel:
     def encode(self, text, normalize_embeddings=True):
         assert normalize_embeddings is True
+        if "unrelated" in text.lower() or "weather" in text.lower():
+            return [0.0, 1.0]
         if text == "What is ADAM?":
             return [0.95, 0.05]
         if text.startswith("The project is called ADAM"):
@@ -24,11 +29,35 @@ class FakeModel:
         return [0.0, 1.0]
 
 
+class FakeLLM:
+    def __init__(self, decision):
+        self.decision = decision
+        self.candidate_batches = []
+
+    def analyze_consolidation(self, new_content, candidates):
+        self.candidate_batches.append(candidates)
+        return self.decision
+
+
 def build_service(tmp_path):
     return RetrievalService(
         SQLiteStorage(tmp_path / "adam.db"),
         EmbeddingService("fake-model", model=FakeModel()),
     )
+
+
+def build_consolidating_service(tmp_path, decision, candidate_limit=3):
+    llm = FakeLLM(decision)
+    service = RetrievalService(
+        SQLiteStorage(tmp_path / "adam.db"),
+        EmbeddingService("fake-model", model=FakeModel()),
+        llm=llm,
+        consolidation_config=ConsolidationConfig(
+            candidate_limit=candidate_limit,
+            min_similarity=0.35,
+        ),
+    )
+    return service, llm
 
 
 def test_database_initialization_and_memory_persistence(tmp_path):
@@ -59,6 +88,16 @@ def test_embedding_generation_loads_configured_model():
 
     assert vector == [0.0, 1.0]
     assert embedding_service._model is not None
+
+
+def test_structured_decision_requires_merged_content_for_updates():
+    with pytest.raises(ValueError):
+        ConsolidationDecision(action="RELATED").require_merged_content()
+
+    decision = ConsolidationDecision(
+        action="RELATED", merged_content="Merged memory."
+    )
+    assert decision.require_merged_content() == "Merged memory."
 
 
 def test_importance_scoring_is_bounded_and_rewards_persistent_language():
@@ -125,6 +164,82 @@ def test_importance_and_tier_persist_in_sqlite(tmp_path):
     assert persisted.tier == memory.tier
 
 
+def test_duplicate_does_not_create_memory_and_updates_access(tmp_path):
+    seed = build_service(tmp_path)
+    original = seed.store_memory("user-1", "I use Python for data analysis.")
+    service, llm = build_consolidating_service(
+        tmp_path,
+        ConsolidationDecision(action="DUPLICATE", reason="Same fact"),
+    )
+
+    result = service.store_memory("user-1", "I use Python for data analysis.")
+
+    assert result.memory_id == original.memory_id
+    assert service.storage.count() == 1
+    assert result.access_count == 1
+    assert len(llm.candidate_batches[0]) == 1
+    assert service.storage.get_consolidation_events("user-1")[0]["action"] == "DUPLICATE"
+
+
+@pytest.mark.parametrize(
+    ("action", "incoming", "merged"),
+    [
+        ("RELATED", "I use Python and pandas.", "I use Python and pandas for data analysis."),
+        ("CONTRADICTORY", "I now use Rust for systems work.", "I now use Rust for systems work."),
+    ],
+)
+def test_related_and_contradictory_update_existing_memory(
+    tmp_path, action, incoming, merged
+):
+    seed = build_service(tmp_path)
+    original = seed.store_memory("user-1", "I use Python for data analysis.")
+    service, _ = build_consolidating_service(
+        tmp_path,
+        ConsolidationDecision(
+            action=action, merged_content=merged, reason="Test decision"
+        ),
+    )
+
+    result = service.store_memory("user-1", incoming)
+    persisted = service.storage.get_memories("user-1")
+    events = service.storage.get_consolidation_events("user-1")
+
+    assert result.memory_id == original.memory_id
+    assert result.content == merged
+    assert len(persisted) == 1
+    assert result.access_count == 1
+    assert events[0]["action"] == action
+    assert events[0]["old_content"] == original.content
+
+
+def test_new_unrelated_memory_is_stored_without_candidates(tmp_path):
+    service, llm = build_consolidating_service(
+        tmp_path,
+        ConsolidationDecision(action="NEW/UNRELATED", reason="No match"),
+    )
+
+    result = service.store_memory("user-1", "The weather today is sunny.")
+
+    assert service.storage.count() == 1
+    assert result.content == "The weather today is sunny."
+    assert llm.candidate_batches == [[]]
+
+
+def test_consolidation_candidate_count_is_bounded(tmp_path):
+    seed = build_service(tmp_path)
+    for index in range(5):
+        seed.store_memory("user-1", f"ADAM project fact {index}.")
+    service, llm = build_consolidating_service(
+        tmp_path,
+        ConsolidationDecision(action="NEW/UNRELATED"),
+        candidate_limit=2,
+    )
+
+    service.store_memory("user-1", "ADAM project update.")
+
+    assert len(llm.candidate_batches[0]) == 2
+
+
 def test_api_health_endpoint(tmp_path):
     app.state.retrieval = build_service(tmp_path)
 
@@ -132,7 +247,7 @@ def test_api_health_endpoint(tmp_path):
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "phase": 2}
+    assert response.json() == {"status": "ok", "phase": 3}
 
 
 def test_api_memory_and_retrieve_endpoints(tmp_path):

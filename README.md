@@ -2,14 +2,16 @@
 
 ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems.
 
-This repository currently implements **Phase 1 and Phase 2**:
+This repository currently implements **Phase 1, Phase 2, and Phase 3**:
 
 ```text
-User text -> embedding -> importance score -> tier assignment -> SQLite storage
+User text -> embedding -> importance score -> tier assignment -> consolidation -> SQLite storage
 Query -> embedding -> cosine retrieval -> top-k memories
 ```
 
-Phase 2 adds a transparent importance and tier baseline. It does not implement the complete adaptive ADAM lifecycle.
+Phase 2 adds a transparent importance and tier baseline. Phase 3 adds
+LLM-assisted consolidation using Ollama. These are research baselines and do
+not implement the complete adaptive ADAM lifecycle.
 
 ## Phase 1 implements
 
@@ -23,8 +25,13 @@ Phase 2 adds a transparent importance and tier baseline. It does not implement t
 - A reproducible heuristic importance score in the range 0-1.
 - Configurable `WORKING`, `SHORT_TERM`, `LONG_TERM`, and `ARCHIVE` assignment.
 - Persistence and API responses for `importance_score` and `tier`.
+- Semantic candidate retrieval before consolidation, bounded by configuration.
+- Structured `DUPLICATE`, `RELATED`, `CONTRADICTORY`, and `NEW/UNRELATED` decisions.
+- Consolidation audit events in SQLite.
 
-Phase 2 does **not** implement consolidation, duplicate detection, contradiction detection, forgetting, query drift, adaptive scope, multi-signal ranking, context compression, LLM extraction, or LLM responses.
+Phase 3 does **not** implement forgetting, query drift, adaptive scope,
+multi-signal ranking, context compression, LLM extraction, or final LLM response
+generation.
 
 ## Architecture
 
@@ -33,6 +40,9 @@ POST /memory
     -> EmbeddingService
   -> HeuristicImportanceScorer
   -> TierAssigner
+  -> ConsolidationService
+      -> bounded semantic candidate retrieval
+      -> structured Ollama decision
     -> Memory object
     -> SQLiteStorage.save_memory
     -> data/adam.db
@@ -45,19 +55,21 @@ POST /retrieve
     -> access metadata update
 ```
 
-The storage layer owns SQLite and SQL statements. The importance and tier modules
-are independent of storage. The retrieval layer still ranks using semantic
-similarity only; importance, tier, and access metadata are not retrieval signals
-yet. This separation makes each component easy to replace or ablate in later
-experiments.
+The storage layer owns SQLite and SQL statements. The importance, tier, LLM, and
+consolidation modules are independent components. The retrieval layer still
+ranks using semantic similarity only; importance, tier, and access metadata are
+not retrieval signals yet. This separation makes each component easy to replace
+or ablate in later experiments.
 
 ## Requirements
 
 - Python 3.10 or newer
 - macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
 - No MongoDB, Redis, Docker, or external database
+- Ollama with `qwen2.5:3b` for the Phase 3 write path
 
-Ollama is not required for Phase 1 because this phase does not call an LLM. It can be installed later for conversation generation.
+Tests inject a deterministic fake client and do not require a running Ollama
+server.
 
 ## Setup
 
@@ -89,9 +101,9 @@ The project uses:
 
 The first real embedding call may download and cache `all-MiniLM-L6-v2` from Hugging Face. It produces 384-dimensional vectors and is appropriate for development on the target laptop.
 
-### 3. Optional: install Ollama for later phases
+### 3. Install Ollama
 
-Ollama is not needed to run Phase 1. For later LLM phases:
+Ollama is the current local experimental provider for consolidation:
 
 ```bash
 brew install ollama
@@ -99,7 +111,16 @@ ollama serve
 ollama pull qwen2.5:3b
 ```
 
-`qwen2.5:3b` is the selected lightweight conversation model for the M2/8 GB target. Do not add it to the Phase 1 runtime path yet.
+`qwen2.5:3b` is the selected lightweight model for the M2/8 GB target.
+
+Optional Phase 3 settings:
+
+```bash
+export OLLAMA_HOST='http://127.0.0.1:11434'
+export OLLAMA_MODEL='qwen2.5:3b'
+export CONSOLIDATION_CANDIDATE_LIMIT='3'
+export CONSOLIDATION_MIN_SIMILARITY='0.35'
+```
 
 ## Run tests
 
@@ -187,10 +208,13 @@ ADAM/
 │   │   └── tiers.py               # Configurable tier assignment
 │   └── retrieval/
 │       ├── embeddings.py          # Replaceable embedding interface
-│       └── retrieval.py            # Semantic retrieval and cosine similarity
+│       ├── retrieval.py            # Semantic retrieval and write orchestration
+│       └── similarity.py           # Cosine similarity primitive
+│   └── llm/
+│       └── client.py               # LLMClient and OllamaClient
 ├── data/                          # Local runtime data; SQLite DB is ignored
 ├── tests/
-│   └── test_phase1.py             # Phase 1 and Phase 2 unit/API tests
+│   └── test_phase1.py             # Phase 1-3 unit/API tests
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -203,6 +227,29 @@ ADAM/
 - There is no authentication, conversation/session management, batching, or production deployment configuration.
 - Retrieval ranks only by semantic similarity; importance, tier, recency, and access frequency are intentionally excluded from ranking until a later phase.
 - The importance score is a baseline heuristic, not the final ADAM scoring mechanism or an LLM-based judgment.
+- Ollama is currently the only LLM provider implementation and must be running for the default `/memory` endpoint.
+
+## Phase 3 consolidation
+
+When a new memory arrives, `ConsolidationService` embeds it and compares it
+against only the top semantic candidates above the configured similarity
+threshold. The entire database is never sent to Ollama.
+
+`LLMClient` is the provider contract and `OllamaClient` is the current local
+experimental implementation. Ollama is asked for JSON using its `format: json`
+option, and the response is validated by the Pydantic `ConsolidationDecision`
+model. The action must be one of:
+
+- `DUPLICATE`: do not create a memory; increment the existing memory's access metadata.
+- `RELATED`: merge useful information, then recalculate embedding, importance, and tier.
+- `CONTRADICTORY`: replace the active content with newer/current information and recalculate derived fields.
+- `NEW/UNRELATED`: create a new memory normally.
+
+Related and contradictory updates preserve an audit row in the
+`consolidation_events` table containing incoming text, action, old content, new
+content, target memory, reason, and timestamp. A stronger local or Kaggle-backed
+model can later implement the same client contract without changing ADAM core
+logic.
 
 ## Phase 2 importance and tiers
 
@@ -238,6 +285,6 @@ SQLite storage or the API pipeline.
 
 ## Roadmap
 
-The next logical phase is **Phase 3: memory consolidation**, beginning with
-duplicate and related-memory handling. It should remain separate from the
-importance scorer and preserve the Phase 1 similarity-only retrieval baseline.
+The next logical phase is **Phase 4: selective forgetting and archiving**. It
+should remain separate from consolidation and preserve the similarity-only
+retrieval baseline.

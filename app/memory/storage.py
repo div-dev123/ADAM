@@ -2,6 +2,7 @@
 
 import sqlite3
 import uuid
+import json
 from pathlib import Path
 
 from app.memory.models import Memory, utc_now
@@ -18,6 +19,18 @@ CREATE TABLE IF NOT EXISTS memories (
     access_count INTEGER NOT NULL DEFAULT 0,
     importance_score REAL NOT NULL DEFAULT 0.0,
     tier TEXT NOT NULL DEFAULT 'WORKING'
+);
+
+CREATE TABLE IF NOT EXISTS consolidation_events (
+    event_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    incoming_content TEXT NOT NULL,
+    target_memory_id TEXT,
+    action TEXT NOT NULL,
+    old_content TEXT,
+    new_content TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL
 )
 """
 
@@ -38,7 +51,7 @@ class SQLiteStorage:
         """Create the database directory and memories table if needed."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
-            connection.execute(SCHEMA)
+            connection.executescript(SCHEMA)
             columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(memories)")
             }
@@ -85,6 +98,51 @@ class SQLiteStorage:
                    WHERE memory_id = ?""",
                 (accessed_at.isoformat(), memory_id),
             )
+
+    def update_memory(self, memory: Memory) -> Memory:
+        """Persist an updated consolidated memory."""
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE memories SET content = ?, embedding = ?,
+                   last_accessed = ?, access_count = ?, importance_score = ?,
+                   tier = ? WHERE memory_id = ?""",
+                (
+                    memory.content,
+                    json.dumps(memory.embedding),
+                    memory.last_accessed.isoformat(),
+                    memory.access_count,
+                    memory.importance_score,
+                    memory.tier,
+                    memory.memory_id,
+                ),
+            )
+        return memory
+
+    def record_consolidation_event(
+        self, user_id: str, incoming_content: str, target: Memory,
+        decision, old_content: str | None = None,
+    ) -> None:
+        """Record a consolidation decision for later research auditing."""
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO consolidation_events
+                   (event_id, user_id, incoming_content, target_memory_id,
+                    action, old_content, new_content, reason, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()), user_id, incoming_content,
+                    target.memory_id, decision.action, old_content,
+                    target.content, decision.reason, utc_now().isoformat(),
+                ),
+            )
+
+    def get_consolidation_events(self, user_id: str) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM consolidation_events WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def count(self) -> int:
         """Return the number of persisted memories."""

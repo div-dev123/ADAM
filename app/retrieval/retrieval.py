@@ -1,23 +1,43 @@
 """Phase 1 semantic retrieval service."""
 
-import math
-
 from app.memory.models import Memory, utc_now
+from app.memory.consolidation import ConsolidationConfig, ConsolidationService
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.storage import SQLiteStorage, create_memory
 from app.memory.tiers import TierAssigner, TierThresholds
 from app.retrieval.embeddings import EmbeddingService
+from app.retrieval.similarity import cosine_similarity
 
 
 class RetrievalService:
-    def __init__(self, storage: SQLiteStorage, embeddings: EmbeddingService,
-                 scorer=None, tier_assigner=None):
+    def __init__(
+        self,
+        storage: SQLiteStorage,
+        embeddings: EmbeddingService,
+        scorer=None,
+        tier_assigner=None,
+        llm=None,
+        consolidation_config: ConsolidationConfig | None = None,
+    ):
         self.storage = storage
         self.embeddings = embeddings
         self.scorer = scorer or HeuristicImportanceScorer(ImportanceWeights())
         self.tier_assigner = tier_assigner or TierAssigner(TierThresholds())
+        self.consolidation = (
+            ConsolidationService(
+                storage,
+                llm,
+                embeddings,
+                self.scorer,
+                self.tier_assigner,
+                consolidation_config,
+            )
+            if llm else None
+        )
 
     def store_memory(self, user_id: str, content: str) -> Memory:
+        if self.consolidation:
+            return self.consolidation.process(user_id, content)
         memory = create_memory(user_id, content, self.embeddings.encode(content))
         memory.importance_score = self.scorer.score(
             memory.content,
@@ -49,15 +69,3 @@ class RetrievalService:
             memory.access_count += 1
             results.append({"memory": memory, "similarity": score})
         return results
-
-
-def cosine_similarity(first: list[float], second: list[float]) -> float:
-    """Return cosine similarity without adding ranking signals."""
-    if not first or not second or len(first) != len(second):
-        return 0.0
-    dot_product = sum(left * right for left, right in zip(first, second))
-    first_norm = math.sqrt(sum(value * value for value in first))
-    second_norm = math.sqrt(sum(value * value for value in second))
-    if not first_norm or not second_norm:
-        return 0.0
-    return dot_product / (first_norm * second_norm)
