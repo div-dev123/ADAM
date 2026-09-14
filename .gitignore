@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 .env
 *.pyc
+data/*.db
 
 # macOS and editor files
 .DS_Store

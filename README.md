@@ -1,41 +1,59 @@
 # ADAM
 
-ADAM is a lightweight research prototype for memory management in LLM-based conversational systems.
+ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems.
 
-The repository currently implements **Phase 1 only**:
+This repository intentionally implements **Phase 1 only**:
 
 ```text
-Text message -> SentenceTransformer embedding -> Memory storage -> Semantic retrieval
+User text -> embedding -> Memory object -> SQLite storage -> cosine retrieval -> top-k memories
 ```
 
-Later phases will add importance scoring, memory tiers, consolidation, forgetting, query drift, multi-signal ranking, and context assembly. They are intentionally not implemented yet.
+Phase 1 is a baseline memory system. It does not implement the complete adaptive ADAM lifecycle.
 
-## Phase 1 capabilities
+## Phase 1 implements
 
-- Store a text memory for a user.
-- Generate a local embedding with `all-MiniLM-L6-v2`.
-- Persist memories in MongoDB Atlas when `MONGODB_URI` is configured.
-- Use an in-memory backend for tests and local development without Atlas.
-- Retrieve a user's memories by cosine similarity.
-- Expose storage and retrieval through FastAPI.
-- Track `memory_id`, `user_id`, `content`, `embedding`, `created_at`, `last_accessed`, and `access_count`.
+- Memory creation from user text.
+- Lightweight SentenceTransformer embeddings.
+- Local SQLite persistence at `data/adam.db`.
+- User-scoped semantic retrieval using cosine similarity.
+- Configurable top-k retrieval.
+- `last_accessed` and `access_count` updates when memories are returned.
+- A small FastAPI API for storing and retrieving memories.
 
-The LLM and Ollama are not required for Phase 1 retrieval. Ollama is prepared for later conversation-generation phases.
+Phase 1 does **not** implement importance scoring, memory tiers, consolidation, duplicate detection, contradiction detection, forgetting, query drift, adaptive scope, multi-signal ranking, context compression, LLM extraction, or LLM responses.
+
+## Architecture
+
+```text
+POST /memory
+    -> EmbeddingService
+    -> Memory object
+    -> SQLiteStorage.save_memory
+    -> data/adam.db
+
+POST /retrieve
+    -> EmbeddingService
+    -> SQLiteStorage.get_memories
+    -> cosine similarity
+    -> top-k results
+    -> access metadata update
+```
+
+The storage layer owns SQLite and SQL statements. The retrieval layer owns embedding queries and cosine ranking. This separation makes each component easy to replace or ablate in later experiments.
 
 ## Requirements
 
-- macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
 - Python 3.10 or newer
-- MongoDB Atlas account for persistent storage
-- Ollama installed locally for later phases
+- macOS on Apple Silicon, such as an M2 MacBook Air with 8 GB unified memory
+- No MongoDB, Redis, Docker, or external database
 
-No local MongoDB, Redis, Docker, or microservices are used.
+Ollama is not required for Phase 1 because this phase does not call an LLM. It can be installed later for conversation generation.
 
 ## Setup
 
-Run these commands from the repository root.
+Run commands from the repository root.
 
-### 1. Create a virtual environment
+### 1. Create and activate the virtual environment
 
 ```bash
 python3 -m venv .venv
@@ -43,138 +61,132 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-VS Code: select `.venv/bin/python` as the project interpreter.
+In VS Code, select `.venv/bin/python` as the project interpreter.
 
-### 2. Install Python dependencies
+### 2. Install dependencies
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-The dependencies include FastAPI, Uvicorn, PyMongo, `dnspython` for Atlas SRV URLs, SentenceTransformers, Pytest, pandas, and scikit-learn.
+The project uses:
 
-The first real embedding call downloads and caches `all-MiniLM-L6-v2`. This is a lightweight 384-dimensional model suitable for the target MacBook.
+- FastAPI and Uvicorn for the API.
+- SentenceTransformers for embeddings.
+- `all-MiniLM-L6-v2` as the default lightweight embedding model.
+- NumPy for the embedding library's numerical operations.
+- Pytest and HTTPX for tests and API testing.
 
-### 3. Configure MongoDB Atlas
+The first real embedding call may download and cache `all-MiniLM-L6-v2` from Hugging Face. It produces 384-dimensional vectors and is appropriate for development on the target laptop.
 
-Create an Atlas cluster and database user, then allow your development IP under Atlas Network Access. Copy the Atlas Python connection string and export it in the terminal:
+### 3. Optional: install Ollama for later phases
 
-```bash
-export MONGODB_URI='mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority'
-```
-
-Optional settings:
-
-```bash
-export MONGODB_DATABASE='adam_memory'
-export MONGODB_COLLECTION='memories'
-export EMBEDDING_MODEL='all-MiniLM-L6-v2'
-```
-
-Do not commit credentials. The repository ignores `.env`; for persistent local configuration, create `.env` and load/export its values in your shell.
-
-If `MONGODB_URI` is not set, the API uses the in-memory backend. That is useful for tests, but data disappears when the process stops.
-
-### 4. Set up Ollama for later phases
-
-Ollama is not needed to run Phase 1. If it is not installed:
+Ollama is not needed to run Phase 1. For later LLM phases:
 
 ```bash
 brew install ollama
-```
-
-Start the server in a separate terminal:
-
-```bash
 ollama serve
-```
-
-Download the lightweight conversation model selected for this project:
-
-```bash
 ollama pull qwen2.5:3b
 ```
 
-Verify it:
-
-```bash
-ollama run qwen2.5:3b "Explain conversational memory in one sentence."
-```
-
-`qwen2.5:3b` is selected for the M2/8 GB target. Do not run it simultaneously with unnecessary larger local models.
+`qwen2.5:3b` is the selected lightweight conversation model for the M2/8 GB target. Do not add it to the Phase 1 runtime path yet.
 
 ## Run tests
-
-Activate the environment, then run:
 
 ```bash
 source .venv/bin/activate
 USE_TF=0 python -m pytest -q
 ```
 
-`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras installation. ADAM uses PyTorch for SentenceTransformers and does not need TensorFlow.
+`USE_TF=0` prevents Transformers from probing an incompatible TensorFlow/Keras installation. ADAM uses PyTorch through SentenceTransformers and does not need TensorFlow.
 
-The tests use fake embeddings and the in-memory backend, so they do not require MongoDB, Hugging Face network access, or Ollama.
+The tests use a deterministic embedding double, so they do not download a model or require an external service.
 
 ## Run the API
 
 ```bash
 source .venv/bin/activate
-USE_TF=0 uvicorn app.main:app --reload
+USE_TF=0 python -m uvicorn app.main:app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000`. Interactive documentation is available at `http://127.0.0.1:8000/docs`.
+The API is available at `http://127.0.0.1:8000`. FastAPI documentation is at `http://127.0.0.1:8000/docs`.
 
-### Store a memory
+### Health check
 
 ```bash
-curl -X POST http://127.0.0.1:8000/memories \
+curl http://127.0.0.1:8000/health
+```
+
+### Store memories
+
+```bash
+curl -X POST http://127.0.0.1:8000/memory \
   -H 'Content-Type: application/json' \
   -d '{"user_id":"user-1","content":"The project is called ADAM and focuses on adaptive memory management."}'
 ```
 
-### Store another memory
-
 ```bash
-curl -X POST http://127.0.0.1:8000/memories \
+curl -X POST http://127.0.0.1:8000/memory \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","content":"ADAM uses semantic memory retrieval to retrieve relevant information."}'
+  -d '{"user_id":"user-1","content":"ADAM uses semantic memory retrieval to find relevant information."}'
 ```
 
-### Search memories
-
 ```bash
-curl -X POST http://127.0.0.1:8000/memories/search \
+curl -X POST http://127.0.0.1:8000/memory \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1","query":"What is ADAM?","top_k":5}'
+  -d '{"user_id":"user-1","content":"The weather today is sunny."}'
 ```
 
-The response contains ranked memories and their cosine similarity scores. Each returned memory also has updated `last_accessed` and `access_count` values.
+### Retrieve memories
+
+```bash
+curl -X POST http://127.0.0.1:8000/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"user-1","query":"What is ADAM?","top_k":2}'
+```
+
+The response contains memories ranked by cosine similarity. The returned memories also report updated `last_accessed` and `access_count` values.
+
+## SQLite storage design
+
+The database is created automatically at:
+
+```text
+data/adam.db
+```
+
+The `memories` table stores the required metadata and the embedding as JSON text. JSON was chosen because it is readable, uses only the Python standard library, works with SQLite without extensions, and can be converted later to a vector-database representation. Similarity is calculated in Python for this small research baseline.
+
+The database file is ignored by Git through `data/*.db`. No credentials or external database service are needed.
 
 ## Project structure
 
 ```text
 ADAM/
 ├── app/
-│   ├── main.py                    # FastAPI application and endpoints
-│   ├── config.py                  # Environment-backed settings
+│   ├── main.py                    # FastAPI endpoints
+│   ├── config.py                  # Database and model configuration
 │   ├── memory/
-│   │   ├── models.py              # Phase 1 Memory dataclass
-│   │   └── storage.py             # MongoDB Atlas and test storage
+│   │   ├── models.py              # Memory dataclass and SQLite row conversion
+│   │   └── storage.py             # SQLite schema and persistence functions
 │   └── retrieval/
-│       ├── embeddings.py          # SentenceTransformer wrapper
-│       └── retrieval.py            # Store and search orchestration
+│       ├── embeddings.py          # Replaceable embedding interface
+│       └── retrieval.py            # Semantic retrieval and cosine similarity
+├── data/                          # Local runtime data; SQLite DB is ignored
 ├── tests/
-│   └── test_phase1.py             # Storage, retrieval, and API tests
+│   └── test_phase1.py             # Phase 1 unit and API tests
 ├── requirements.txt
-├── .env.example
-└── README.md
+├── README.md
+└── .gitignore
 ```
 
-## Design notes
+## Limitations
 
-- The storage interface keeps MongoDB-specific code separate from retrieval logic.
-- Similarity ranking is calculated in Python for transparent research experiments.
-- MongoDB stores embeddings as arrays alongside memory metadata.
-- The model is loaded lazily, so importing the API does not immediately load PyTorch.
-- Phase 1 has no importance, tier, consolidation, forgetting, drift, ranking-weight, or LLM-response logic.
+- SQLite retrieval scans a user's memories in Python, so it is intended for a prototype and modest datasets.
+- The default model is loaded lazily and requires local model-cache space.
+- There is no authentication, conversation/session management, batching, or production deployment configuration.
+- Phase 1 ranks only by semantic similarity; it intentionally ignores recency and access frequency for ranking.
+
+## Roadmap
+
+The next logical phase is **Phase 2: explicit importance scoring and memory classification**. It should be implemented as a separate, measurable module without changing the Phase 1 retrieval baseline.

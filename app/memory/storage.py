@@ -1,95 +1,81 @@
-"""Memory persistence backends for Phase 1."""
+"""SQLite persistence for the Phase 1 memory system."""
 
-import math
+import sqlite3
 import uuid
-from abc import ABC, abstractmethod
+from pathlib import Path
 
 from app.memory.models import Memory, utc_now
 
 
-class MemoryStorage(ABC):
-    @abstractmethod
-    def add(self, memory: Memory) -> Memory:
-        raise NotImplementedError
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS memories (
+    memory_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_accessed TEXT NOT NULL,
+    access_count INTEGER NOT NULL DEFAULT 0
+)
+"""
 
-    @abstractmethod
-    def update(self, memory: Memory) -> Memory:
-        raise NotImplementedError
 
-    @abstractmethod
-    def search(self, user_id: str, query_embedding: list[float], top_k: int):
-        raise NotImplementedError
+class SQLiteStorage:
+    """Store memories in a local SQLite database."""
 
+    def __init__(self, database_path: str | Path = "data/adam.db"):
+        self.database_path = Path(database_path)
+        self.initialize_database()
 
-class InMemoryStorage(MemoryStorage):
-    """Deterministic local backend for tests and development."""
+    def _connect(self):
+        connection = sqlite3.connect(self.database_path)
+        connection.row_factory = sqlite3.Row
+        return connection
 
-    def __init__(self):
-        self._memories: dict[str, Memory] = {}
+    def initialize_database(self) -> None:
+        """Create the database directory and memories table if needed."""
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as connection:
+            connection.execute(SCHEMA)
 
-    def add(self, memory: Memory) -> Memory:
-        self._memories[memory.memory_id] = memory
+    def save_memory(self, memory: Memory) -> Memory:
+        """Persist one memory and return it unchanged."""
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO memories
+                (memory_id, user_id, content, embedding, created_at,
+                 last_accessed, access_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                memory.to_row(),
+            )
         return memory
 
-    def update(self, memory: Memory) -> Memory:
-        self._memories[memory.memory_id] = memory
-        return memory
+    def get_memories(self, user_id: str) -> list[Memory]:
+        """Return all memories belonging to one user."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT memory_id, user_id, content, embedding, created_at,
+                   last_accessed, access_count
+                   FROM memories WHERE user_id = ?""",
+                (user_id,),
+            ).fetchall()
+        return [Memory.from_row(tuple(row)) for row in rows]
 
-    def search(self, user_id: str, query_embedding: list[float], top_k: int):
-        candidates = [
-            memory for memory in self._memories.values()
-            if memory.user_id == user_id
-        ]
-        ranked = [
-            (cosine_similarity(query_embedding, memory.embedding), memory)
-            for memory in candidates
-        ]
-        ranked.sort(key=lambda item: item[0], reverse=True)
-        return ranked[:top_k]
+    def update_access_metadata(self, memory_id: str, accessed_at=None) -> None:
+        """Update retrieval metadata for a returned memory."""
+        accessed_at = accessed_at or utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE memories
+                   SET last_accessed = ?, access_count = access_count + 1
+                   WHERE memory_id = ?""",
+                (accessed_at.isoformat(), memory_id),
+            )
 
-
-class MongoStorage(MemoryStorage):
-    """MongoDB Atlas backend with transparent Python similarity ranking."""
-
-    def __init__(self, uri: str, database: str, collection: str):
-        from pymongo import MongoClient
-
-        self.client = MongoClient(uri)
-        self.collection = self.client[database][collection]
-        self.collection.create_index("user_id")
-
-    def add(self, memory: Memory) -> Memory:
-        self.collection.insert_one(memory.to_document())
-        return memory
-
-    def update(self, memory: Memory) -> Memory:
-        document = memory.to_document()
-        document.pop("_id")
-        self.collection.update_one({"_id": memory.memory_id}, {"$set": document})
-        return memory
-
-    def search(self, user_id: str, query_embedding: list[float], top_k: int):
-        candidates = [
-            Memory.from_document(document)
-            for document in self.collection.find({"user_id": user_id})
-        ]
-        ranked = [
-            (cosine_similarity(query_embedding, memory.embedding), memory)
-            for memory in candidates
-        ]
-        ranked.sort(key=lambda item: item[0], reverse=True)
-        return ranked[:top_k]
-
-
-def cosine_similarity(first: list[float], second: list[float]) -> float:
-    if not first or not second or len(first) != len(second):
-        return 0.0
-    dot_product = sum(left * right for left, right in zip(first, second))
-    first_norm = math.sqrt(sum(value * value for value in first))
-    second_norm = math.sqrt(sum(value * value for value in second))
-    if not first_norm or not second_norm:
-        return 0.0
-    return dot_product / (first_norm * second_norm)
+    def count(self) -> int:
+        """Return the number of persisted memories."""
+        with self._connect() as connection:
+            return connection.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
 
 
 def create_memory(user_id: str, content: str, embedding: list[float]) -> Memory:

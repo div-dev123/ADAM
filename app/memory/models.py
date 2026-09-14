@@ -1,5 +1,6 @@
 """Minimal Phase 1 memory data model."""
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -18,25 +19,25 @@ class Memory:
     last_accessed: datetime
     access_count: int = 0
 
-    def to_document(self) -> dict:
-        return {
-            "_id": self.memory_id,
-            "user_id": self.user_id,
-            "content": self.content,
-            "embedding": self.embedding,
-            "created_at": self.created_at,
-            "last_accessed": self.last_accessed,
-            "access_count": self.access_count,
-        }
+    def to_row(self) -> tuple:
+        return (
+            self.memory_id,
+            self.user_id,
+            self.content,
+            json.dumps(self.embedding),
+            self.created_at.isoformat(),
+            self.last_accessed.isoformat(),
+            self.access_count,
+        )
 
     @classmethod
-    def from_document(cls, document: dict) -> "Memory":
+    def from_row(cls, row: tuple) -> "Memory":
         return cls(
-            memory_id=str(document["_id"]),
-            user_id=document["user_id"],
-            content=document["content"],
-            embedding=list(document["embedding"]),
-            created_at=document["created_at"],
-            last_accessed=document["last_accessed"],
-            access_count=document.get("access_count", 0),
+            memory_id=row[0],
+            user_id=row[1],
+            content=row[2],
+            embedding=json.loads(row[3]),
+            created_at=datetime.fromisoformat(row[4]),
+            last_accessed=datetime.fromisoformat(row[5]),
+            access_count=row[6],
         )

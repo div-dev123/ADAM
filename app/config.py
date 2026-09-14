@@ -2,14 +2,13 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "ADAM Phase 1"
-    mongo_uri: str | None = None
-    mongo_database: str = "adam_memory"
-    mongo_collection: str = "memories"
+    database_path: Path = Path("data/adam.db")
     embedding_model: str = "all-MiniLM-L6-v2"
     default_top_k: int = 5
     max_top_k: int = 20
@@ -17,9 +16,7 @@ class Settings:
     @classmethod
     def from_environment(cls) -> "Settings":
         return cls(
-            mongo_uri=os.getenv("MONGODB_URI"),
-            mongo_database=os.getenv("MONGODB_DATABASE", "adam_memory"),
-            mongo_collection=os.getenv("MONGODB_COLLECTION", "memories"),
+            database_path=Path(os.getenv("ADAM_DATABASE_PATH", "data/adam.db")),
             embedding_model=os.getenv(
                 "EMBEDDING_MODEL", "all-MiniLM-L6-v2"
             ),

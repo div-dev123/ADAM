@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.memory.storage import InMemoryStorage, MemoryStorage, MongoStorage
+from app.memory.storage import SQLiteStorage
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.retrieval import RetrievalService
 
@@ -22,14 +22,8 @@ class MemorySearchRequest(BaseModel):
     top_k: int = Field(default=settings.default_top_k, ge=1, le=settings.max_top_k)
 
 
-def build_storage() -> MemoryStorage:
-    if settings.mongo_uri:
-        return MongoStorage(
-            settings.mongo_uri,
-            settings.mongo_database,
-            settings.mongo_collection,
-        )
-    return InMemoryStorage()
+def build_storage() -> SQLiteStorage:
+    return SQLiteStorage(settings.database_path)
 
 
 @asynccontextmanager
@@ -49,7 +43,7 @@ def health():
     return {"status": "ok", "phase": 1}
 
 
-@app.post("/memories", status_code=201)
+@app.post("/memory", status_code=201)
 def store_memory(request: MemoryCreateRequest):
     try:
         memory = app.state.retrieval.store_memory(request.user_id, request.content)
@@ -58,7 +52,7 @@ def store_memory(request: MemoryCreateRequest):
     return memory_to_response(memory)
 
 
-@app.post("/memories/search")
+@app.post("/retrieve")
 def search_memories(request: MemorySearchRequest):
     try:
         matches = app.state.retrieval.search(

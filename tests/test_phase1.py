@@ -1,59 +1,123 @@
+import json
+import sqlite3
+
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.memory.storage import InMemoryStorage
+from app.memory.models import Memory
+from app.memory.storage import SQLiteStorage, create_memory
+from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.retrieval import RetrievalService
 
 
-class FakeEmbeddings:
-    vectors = {
-        "The project is called ADAM and focuses on adaptive memory management.": [1.0, 0.0],
-        "ADAM uses semantic memory retrieval to retrieve relevant information.": [0.8, 0.2],
-        "What is ADAM?": [0.95, 0.05],
-    }
+class FakeModel:
+    def encode(self, text, normalize_embeddings=True):
+        assert normalize_embeddings is True
+        if text == "What is ADAM?":
+            return [0.95, 0.05]
+        if text.startswith("The project is called ADAM"):
+            return [1.0, 0.0]
+        if text.startswith("ADAM uses semantic"):
+            return [0.8, 0.2]
+        return [0.0, 1.0]
 
-    def encode(self, text):
-        return self.vectors[text]
+
+def build_service(tmp_path):
+    return RetrievalService(
+        SQLiteStorage(tmp_path / "adam.db"),
+        EmbeddingService("fake-model", model=FakeModel()),
+    )
 
 
-def test_phase1_semantic_retrieval():
-    service = RetrievalService(InMemoryStorage(), FakeEmbeddings())
+def test_database_initialization_and_memory_persistence(tmp_path):
+    database_path = tmp_path / "data" / "adam.db"
+    storage = SQLiteStorage(database_path)
+    memory = create_memory("user-1", "A stored memory.", [1.0, 0.0])
+
+    storage.save_memory(memory)
+    persisted = storage.get_memories("user-1")
+
+    assert database_path.exists()
+    assert storage.count() == 1
+    assert persisted[0].memory_id == memory.memory_id
+    assert persisted[0].embedding == [1.0, 0.0]
+
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT embedding FROM memories WHERE memory_id = ?",
+            (memory.memory_id,),
+        ).fetchone()
+    assert json.loads(row[0]) == [1.0, 0.0]
+
+
+def test_embedding_generation_loads_configured_model():
+    embedding_service = EmbeddingService("fake-model", model=FakeModel())
+
+    vector = embedding_service.encode("ADAM memory")
+
+    assert vector == [0.0, 1.0]
+    assert embedding_service._model is not None
+
+
+def test_semantic_retrieval_ranks_relevant_memories_and_tracks_access(tmp_path):
+    service = build_service(tmp_path)
     service.store_memory(
         "user-1",
         "The project is called ADAM and focuses on adaptive memory management.",
     )
     service.store_memory(
         "user-1",
-        "ADAM uses semantic memory retrieval to retrieve relevant information.",
+        "ADAM uses semantic memory retrieval to find relevant information.",
     )
+    service.store_memory("user-1", "The weather today is sunny.")
+    service.store_memory("other-user", "ADAM belongs to another user.")
+    before_access = service.storage.get_memories("user-1")[0].last_accessed
 
     results = service.search("user-1", "What is ADAM?", top_k=2)
 
     assert len(results) == 2
+    assert all(result["memory"].user_id == "user-1" for result in results)
     assert results[0]["memory"].content.startswith("The project is called ADAM")
     assert results[0]["similarity"] > results[1]["similarity"]
+    assert results[0]["memory"].access_count == 1
+    persisted = {
+        memory.memory_id: memory
+        for memory in service.storage.get_memories("user-1")
+    }
+    returned_id = results[0]["memory"].memory_id
+    assert persisted[returned_id].access_count == 1
+    assert persisted[returned_id].last_accessed >= before_access
 
 
-def test_api_health_and_memory_flow():
-    app.state.retrieval = RetrievalService(InMemoryStorage(), FakeEmbeddings())
+def test_api_health_endpoint(tmp_path):
+    app.state.retrieval = build_service(tmp_path)
+
     with TestClient(app) as client:
-        health = client.get("/health")
-        assert health.json() == {"status": "ok", "phase": 1}
+        response = client.get("/health")
 
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "phase": 1}
+
+
+def test_api_memory_and_retrieve_endpoints(tmp_path):
+    app.state.retrieval = build_service(tmp_path)
+
+    with TestClient(app) as client:
         stored = client.post(
-            "/memories",
+            "/memory",
             json={
                 "user_id": "user-1",
                 "content": "The project is called ADAM and focuses on adaptive memory management.",
             },
         )
-        assert stored.status_code == 201
-
-        searched = client.post(
-            "/memories/search",
+        retrieved = client.post(
+            "/retrieve",
             json={"user_id": "user-1", "query": "What is ADAM?", "top_k": 1},
         )
-        assert searched.status_code == 200
-        assert searched.json()["results"][0]["memory"]["content"].startswith(
-            "The project is called ADAM"
-        )
+
+    assert stored.status_code == 201
+    assert retrieved.status_code == 200
+    assert retrieved.json()["results"][0]["memory"]["content"].startswith(
+        "The project is called ADAM"
+    )
+    assert retrieved.json()["results"][0]["memory"]["access_count"] == 1
