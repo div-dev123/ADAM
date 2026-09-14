@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS memories (
     embedding TEXT NOT NULL,
     created_at TEXT NOT NULL,
     last_accessed TEXT NOT NULL,
-    access_count INTEGER NOT NULL DEFAULT 0
+    access_count INTEGER NOT NULL DEFAULT 0,
+    importance_score REAL NOT NULL DEFAULT 0.0,
+    tier TEXT NOT NULL DEFAULT 'WORKING'
 )
 """
 
@@ -37,6 +39,17 @@ class SQLiteStorage:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute(SCHEMA)
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(memories)")
+            }
+            if "importance_score" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN importance_score REAL NOT NULL DEFAULT 0.0"
+                )
+            if "tier" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'WORKING'"
+                )
 
     def save_memory(self, memory: Memory) -> Memory:
         """Persist one memory and return it unchanged."""
@@ -44,8 +57,8 @@ class SQLiteStorage:
             connection.execute(
                 """INSERT INTO memories
                 (memory_id, user_id, content, embedding, created_at,
-                 last_accessed, access_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                 last_accessed, access_count, importance_score, tier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 memory.to_row(),
             )
         return memory
@@ -56,6 +69,7 @@ class SQLiteStorage:
             rows = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count
+                   , importance_score, tier
                    FROM memories WHERE user_id = ?""",
                 (user_id,),
             ).fetchall()

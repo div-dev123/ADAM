@@ -6,7 +6,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.storage import SQLiteStorage
+from app.memory.tiers import TierAssigner, TierThresholds
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.retrieval import RetrievalService
 
@@ -26,12 +28,30 @@ def build_storage() -> SQLiteStorage:
     return SQLiteStorage(settings.database_path)
 
 
+def build_retrieval_service() -> RetrievalService:
+    weights = ImportanceWeights(
+        persistent=settings.importance_persistent_weight,
+        length=settings.importance_length_weight,
+        recurrence=settings.importance_recurrence_weight,
+        recency=settings.importance_recency_weight,
+    )
+    thresholds = TierThresholds(
+        archive=settings.archive_threshold,
+        working=settings.working_threshold,
+        short_term=settings.short_term_threshold,
+    )
+    return RetrievalService(
+        build_storage(),
+        EmbeddingService(settings.embedding_model),
+        scorer=HeuristicImportanceScorer(weights),
+        tier_assigner=TierAssigner(thresholds),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not hasattr(app.state, "retrieval"):
-        app.state.retrieval = RetrievalService(
-            build_storage(), EmbeddingService(settings.embedding_model)
-        )
+        app.state.retrieval = build_retrieval_service()
     yield
 
 
@@ -40,7 +60,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "phase": 1}
+    return {"status": "ok", "phase": 2}
 
 
 @app.post("/memory", status_code=201)
@@ -80,4 +100,6 @@ def memory_to_response(memory):
         "created_at": memory.created_at,
         "last_accessed": memory.last_accessed,
         "access_count": memory.access_count,
+        "importance_score": memory.importance_score,
+        "tier": memory.tier,
     }

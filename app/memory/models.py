@@ -1,4 +1,4 @@
-"""Minimal Phase 1 memory data model."""
+"""Memory data model for the Phase 1 and Phase 2 pipeline."""
 
 import json
 from dataclasses import dataclass
@@ -18,6 +18,8 @@ class Memory:
     created_at: datetime
     last_accessed: datetime
     access_count: int = 0
+    importance_score: float = 0.0
+    tier: str = "WORKING"
 
     def to_row(self) -> tuple:
         return (
@@ -28,6 +30,8 @@ class Memory:
             self.created_at.isoformat(),
             self.last_accessed.isoformat(),
             self.access_count,
+            self.importance_score,
+            self.tier,
         )
 
     @classmethod
@@ -40,4 +44,6 @@ class Memory:
             created_at=datetime.fromisoformat(row[4]),
             last_accessed=datetime.fromisoformat(row[5]),
             access_count=row[6],
+            importance_score=row[7],
+            tier=row[8],
         )

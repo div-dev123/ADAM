@@ -3,17 +3,31 @@
 import math
 
 from app.memory.models import Memory, utc_now
+from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.storage import SQLiteStorage, create_memory
+from app.memory.tiers import TierAssigner, TierThresholds
 from app.retrieval.embeddings import EmbeddingService
 
 
 class RetrievalService:
-    def __init__(self, storage: SQLiteStorage, embeddings: EmbeddingService):
+    def __init__(self, storage: SQLiteStorage, embeddings: EmbeddingService,
+                 scorer=None, tier_assigner=None):
         self.storage = storage
         self.embeddings = embeddings
+        self.scorer = scorer or HeuristicImportanceScorer(ImportanceWeights())
+        self.tier_assigner = tier_assigner or TierAssigner(TierThresholds())
 
     def store_memory(self, user_id: str, content: str) -> Memory:
         memory = create_memory(user_id, content, self.embeddings.encode(content))
+        memory.importance_score = self.scorer.score(
+            memory.content,
+            access_count=memory.access_count,
+            created_at=memory.created_at,
+        )
+        memory.tier = self.tier_assigner.assign(
+            memory.importance_score,
+            access_count=memory.access_count,
+        )
         return self.storage.save_memory(memory)
 
     def search(self, user_id: str, query: str, top_k: int):

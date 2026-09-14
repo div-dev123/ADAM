@@ -2,13 +2,14 @@
 
 ADAM (Adaptive Dynamic AI Memory) is a lightweight research prototype for memory management in LLM-based conversational systems.
 
-This repository intentionally implements **Phase 1 only**:
+This repository currently implements **Phase 1 and Phase 2**:
 
 ```text
-User text -> embedding -> Memory object -> SQLite storage -> cosine retrieval -> top-k memories
+User text -> embedding -> importance score -> tier assignment -> SQLite storage
+Query -> embedding -> cosine retrieval -> top-k memories
 ```
 
-Phase 1 is a baseline memory system. It does not implement the complete adaptive ADAM lifecycle.
+Phase 2 adds a transparent importance and tier baseline. It does not implement the complete adaptive ADAM lifecycle.
 
 ## Phase 1 implements
 
@@ -19,14 +20,19 @@ Phase 1 is a baseline memory system. It does not implement the complete adaptive
 - Configurable top-k retrieval.
 - `last_accessed` and `access_count` updates when memories are returned.
 - A small FastAPI API for storing and retrieving memories.
+- A reproducible heuristic importance score in the range 0-1.
+- Configurable `WORKING`, `SHORT_TERM`, `LONG_TERM`, and `ARCHIVE` assignment.
+- Persistence and API responses for `importance_score` and `tier`.
 
-Phase 1 does **not** implement importance scoring, memory tiers, consolidation, duplicate detection, contradiction detection, forgetting, query drift, adaptive scope, multi-signal ranking, context compression, LLM extraction, or LLM responses.
+Phase 2 does **not** implement consolidation, duplicate detection, contradiction detection, forgetting, query drift, adaptive scope, multi-signal ranking, context compression, LLM extraction, or LLM responses.
 
 ## Architecture
 
 ```text
 POST /memory
     -> EmbeddingService
+  -> HeuristicImportanceScorer
+  -> TierAssigner
     -> Memory object
     -> SQLiteStorage.save_memory
     -> data/adam.db
@@ -39,7 +45,11 @@ POST /retrieve
     -> access metadata update
 ```
 
-The storage layer owns SQLite and SQL statements. The retrieval layer owns embedding queries and cosine ranking. This separation makes each component easy to replace or ablate in later experiments.
+The storage layer owns SQLite and SQL statements. The importance and tier modules
+are independent of storage. The retrieval layer still ranks using semantic
+similarity only; importance, tier, and access metadata are not retrieval signals
+yet. This separation makes each component easy to replace or ablate in later
+experiments.
 
 ## Requirements
 
@@ -155,7 +165,11 @@ The database is created automatically at:
 data/adam.db
 ```
 
-The `memories` table stores the required metadata and the embedding as JSON text. JSON was chosen because it is readable, uses only the Python standard library, works with SQLite without extensions, and can be converted later to a vector-database representation. Similarity is calculated in Python for this small research baseline.
+The `memories` table stores the required metadata, `importance_score`, `tier`,
+and the embedding as JSON text. JSON was chosen because it is readable, uses
+only the Python standard library, works with SQLite without extensions, and can
+be converted later to a vector-database representation. Similarity is
+calculated in Python for this small research baseline.
 
 The database file is ignored by Git through `data/*.db`. No credentials or external database service are needed.
 
@@ -168,13 +182,15 @@ ADAM/
 │   ├── config.py                  # Database and model configuration
 │   ├── memory/
 │   │   ├── models.py              # Memory dataclass and SQLite row conversion
-│   │   └── storage.py             # SQLite schema and persistence functions
+│   │   ├── storage.py             # SQLite schema and persistence functions
+│   │   ├── importance.py          # Configurable heuristic scoring
+│   │   └── tiers.py               # Configurable tier assignment
 │   └── retrieval/
 │       ├── embeddings.py          # Replaceable embedding interface
 │       └── retrieval.py            # Semantic retrieval and cosine similarity
 ├── data/                          # Local runtime data; SQLite DB is ignored
 ├── tests/
-│   └── test_phase1.py             # Phase 1 unit and API tests
+│   └── test_phase1.py             # Phase 1 and Phase 2 unit/API tests
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -185,8 +201,43 @@ ADAM/
 - SQLite retrieval scans a user's memories in Python, so it is intended for a prototype and modest datasets.
 - The default model is loaded lazily and requires local model-cache space.
 - There is no authentication, conversation/session management, batching, or production deployment configuration.
-- Phase 1 ranks only by semantic similarity; it intentionally ignores recency and access frequency for ranking.
+- Retrieval ranks only by semantic similarity; importance, tier, recency, and access frequency are intentionally excluded from ranking until a later phase.
+- The importance score is a baseline heuristic, not the final ADAM scoring mechanism or an LLM-based judgment.
+
+## Phase 2 importance and tiers
+
+`HeuristicImportanceScorer` combines four bounded signals:
+
+- Persistent language markers such as `my goal is`, `i prefer`, and `remember that`.
+- Content length, capped at 20 words.
+- Existing access count, capped at three accesses.
+- Recency using a one-day exponential half-life.
+
+The default weights are defined in `app/config.py` and passed into
+`ImportanceWeights`:
+
+```text
+persistent 0.55
+length     0.20
+recurrence 0.15
+recency    0.10
+```
+
+The default tier thresholds are also configurable in `app/config.py`:
+
+```text
+score <= 0.20              ARCHIVE
+0.20 < score <= 0.45      WORKING
+0.45 < score <= 0.70      SHORT_TERM
+score > 0.70              LONG_TERM
+```
+
+These rules are intentionally simple and measurable for ablation studies. A
+future scorer can implement the same `score(...)` contract without changing
+SQLite storage or the API pipeline.
 
 ## Roadmap
 
-The next logical phase is **Phase 2: explicit importance scoring and memory classification**. It should be implemented as a separate, measurable module without changing the Phase 1 retrieval baseline.
+The next logical phase is **Phase 3: memory consolidation**, beginning with
+duplicate and related-memory handling. It should remain separate from the
+importance scorer and preserve the Phase 1 similarity-only retrieval baseline.
