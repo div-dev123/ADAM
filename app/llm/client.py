@@ -75,13 +75,22 @@ class OllamaClient(LLMClient):
             for item in candidates
         ) or "- none"
         prompt = (
-            "Classify the new memory against the candidate memories. Return JSON "
-            "only with action, merged_content, and reason. action must be exactly "
-            "NEW, DUPLICATE, RELATED, or CONTRADICTORY. For RELATED, merge useful "
-            "facts. For CONTRADICTORY, keep the newer/current information.\n\n"
+            "Classify the new memory against the candidate memories. "
+            "Return JSON only with these fields: action, merged_content, reason.\n"
+            "Rules:\n"
+            "- action must be exactly one of: NEW, DUPLICATE, RELATED, CONTRADICTORY\n"
+            "- NEW: no similar candidate exists\n"
+            "- DUPLICATE: new memory is essentially the same as a candidate\n"
+            "- RELATED: new memory adds detail to a candidate; merged_content MUST contain "
+            "the combined text of both memories\n"
+            "- CONTRADICTORY: new memory conflicts with a candidate; merged_content MUST "
+            "contain only the newer/correct information\n"
+            "IMPORTANT: For RELATED and CONTRADICTORY you MUST provide a non-empty merged_content. "
+            "If you cannot produce a merged_content, use NEW instead.\n\n"
             f"New memory: {new_content}\nCandidates:\n{candidate_text}"
         )
         return self._request(prompt, ConsolidationDecision)
+
 
     def compress_memory(self, content: str, compression_level: int) -> CompressionResult:
         strength = "concise" if compression_level == 1 else "very compact"

@@ -84,7 +84,27 @@ class ConsolidationService:
             self.storage.record_history(target, "DUPLICATE", target.content, decision.reason)
             memory = target
         elif decision.action in {"RELATED", "CONTRADICTORY"} and target:
-            memory = self._update(target, content, decision)
+            # Guard: if LLM returned action without a usable merged_content, treat as NEW
+            if not decision.merged_content or not decision.merged_content.strip():
+                decision = type("FallbackDecision", (), {
+                    "action": "NEW",
+                    "reason": f"Fallback to NEW: LLM returned {decision.action} without merged_content",
+                    "merged_content": None,
+                    "merged_text": lambda self: "",
+                })()
+                memory = self._create(user_id, content, embedding)
+            else:
+                try:
+                    memory = self._update(target, content, decision)
+                except ValueError:
+                    # merged_text() raised — store as new memory instead of crashing
+                    memory = self._create(user_id, content, embedding)
+                    decision = type("FallbackDecision", (), {
+                        "action": "NEW",
+                        "reason": "Fallback to NEW: merged_content was invalid",
+                        "merged_content": None,
+                        "merged_text": lambda self: "",
+                    })()
         else:
             memory = self._create(user_id, content, embedding)
 
