@@ -66,7 +66,7 @@ def create_test_retrieval(tmp_path):
         scorer=scorer,
         lifecycle_policy=lifecycle_policy,
         llm=llm,
-        consolidation_config=ConsolidationConfig(candidate_limit=3, min_similarity=0.35),
+        consolidation_config=ConsolidationConfig(candidate_limit=3, min_similarity=0.60),
         compression_config=CompressionConfig(working_to_long_term_level=1, short_term_to_archive_level=2),
     )
 

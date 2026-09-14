@@ -73,11 +73,22 @@ def is_filler(text: str) -> tuple[bool, str]:
     if normalized in ACKNOWLEDGEMENT_TOKENS:
         return True, "trivial_acknowledgement"
 
-    # 2. Check for LLM boilerplate phrases (substring match without length restriction)
+    # 2. Check for LLM boilerplate phrases
+    #    - Short phrases (1-3 words, e.g. "certainly", "sure"): exact match only.
+    #      They appear naturally in long informative responses so substring is too aggressive.
+    #    - Long phrases (4+ words, e.g. "how can i help you today"): substring match.
+    #      These are specific enough that their presence alone marks boilerplate.
     for phrase in LLM_BOILERPLATE_PHRASES:
         phrase_norm = re.sub(r"[^\w\s]", "", phrase.lower()).strip()
-        if normalized == phrase_norm or phrase_norm in normalized:
-            return True, "llm_boilerplate"
+        phrase_words = phrase_norm.split()
+        if len(phrase_words) <= 3:
+            # Only flag if the ENTIRE message is this phrase
+            if normalized == phrase_norm:
+                return True, "llm_boilerplate"
+        else:
+            # Long specific phrase: flag if it appears anywhere in the message
+            if normalized == phrase_norm or phrase_norm in normalized:
+                return True, "llm_boilerplate"
 
     # 3. All tokens in a short phrase (<= 4 words) are trivial tokens (e.g., "ok thanks bye")
     all_trivial = GREETING_TOKENS | ACKNOWLEDGEMENT_TOKENS

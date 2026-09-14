@@ -28,7 +28,7 @@ class Settings:
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:3b"
     consolidation_candidate_limit: int = 3
-    consolidation_min_similarity: float = 0.35
+    consolidation_min_similarity: float = 0.60
     working_compression_level: int = 1
     archive_compression_level_target: int = 2
 
@@ -67,7 +67,7 @@ class Settings:
                 os.getenv("CONSOLIDATION_CANDIDATE_LIMIT", "3")
             ),
             consolidation_min_similarity=float(
-                os.getenv("CONSOLIDATION_MIN_SIMILARITY", "0.35")
+                os.getenv("CONSOLIDATION_MIN_SIMILARITY", "0.60")
             ),
             working_compression_level=int(
                 os.getenv("WORKING_COMPRESSION_LEVEL", "1")
