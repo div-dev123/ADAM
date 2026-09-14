@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.llm.client import CompressionResult, ConsolidationDecision
+from app.memory.compression import CompressionConfig
+from app.memory.consolidation import ConsolidationConfig
 from app.memory.importance import HeuristicImportanceScorer
 from app.memory.models import Memory
 from app.memory.storage import SQLiteStorage, create_memory
@@ -27,11 +30,46 @@ class FakeModel:
         return [0.0, 1.0]
 
 
+class FakeLLM:
+    def __init__(self, decisions=None):
+        self.decisions = list(decisions or [])
+        self.classification_candidates = []
+        self.compression_levels = []
+
+    def classify_memory(self, new_content, candidates):
+        self.classification_candidates.append(candidates)
+        return self.decisions.pop(0)
+
+    def compress_memory(self, content, compression_level):
+        self.compression_levels.append(compression_level)
+        return CompressionResult(
+            compressed_content=f"Compressed[{compression_level}]: {content}",
+            reason="deterministic test compression",
+        )
+
+
 def build_service(tmp_path):
     return RetrievalService(
         SQLiteStorage(tmp_path / "adam.db"),
         EmbeddingService("fake-model", model=FakeModel()),
     )
+
+
+def build_phase3_service(tmp_path, decisions):
+    llm = FakeLLM(decisions)
+    service = RetrievalService(
+        SQLiteStorage(tmp_path / "adam.db"),
+        EmbeddingService("fake-model", model=FakeModel()),
+        llm=llm,
+        consolidation_config=ConsolidationConfig(
+            candidate_limit=2, min_similarity=0.35
+        ),
+        compression_config=CompressionConfig(
+            working_to_long_term_level=1,
+            short_term_to_archive_level=2,
+        ),
+    )
+    return service, llm
 
 
 def test_database_initialization_and_memory_persistence(tmp_path):
@@ -155,10 +193,112 @@ def test_api_health_and_memory_endpoints(tmp_path):
             json={"user_id": "user-1", "query": "What is my goal?", "top_k": 1},
         )
 
-    assert health.json() == {"status": "ok", "phase": 2}
+    assert health.json() == {"status": "ok", "phase": 3}
     assert stored.status_code == 201
     assert 0.0 <= stored.json()["importance_score"] <= 1.0
     assert stored.json()["tier"] == WORKING
     assert retrieved.status_code == 200
     assert "compression_level" in retrieved.json()["results"][0]["memory"]
     assert "updated_at" in retrieved.json()["results"][0]["memory"]
+
+
+def test_new_memory_is_created_and_only_similar_candidates_are_sent(tmp_path):
+    service, llm = build_phase3_service(
+        tmp_path, [ConsolidationDecision(action="NEW", reason="new fact")]
+    )
+
+    memory = service.store_memory("user-1", "A completely new weather fact.")
+
+    assert service.storage.count() == 1
+    assert memory.tier in {WORKING, SHORT_TERM, ARCHIVE}
+    assert llm.classification_candidates == [[]]
+
+
+def test_duplicate_updates_access_without_creating_memory(tmp_path):
+    seed = build_service(tmp_path)
+    original = seed.store_memory("user-1", "I use Python for analysis.")
+    service, llm = build_phase3_service(
+        tmp_path, [ConsolidationDecision(action="DUPLICATE", reason="same fact")]
+    )
+
+    result = service.store_memory("user-1", "I use Python for analysis.")
+
+    assert result.memory_id == original.memory_id
+    assert service.storage.count() == 1
+    assert result.access_count == 1
+    assert service.storage.get_history(original.memory_id)[0]["operation"] == "DUPLICATE"
+    assert len(llm.classification_candidates[0]) == 1
+
+
+def test_related_merges_and_recalculates_embedding(tmp_path):
+    seed = build_service(tmp_path)
+    original = seed.store_memory("user-1", "I use Python for analysis.")
+    service, _ = build_phase3_service(
+        tmp_path,
+        [ConsolidationDecision(
+            action="RELATED",
+            merged_content="I use Python and pandas for analysis.",
+            reason="adds a tool",
+        )],
+    )
+
+    result = service.store_memory("user-1", "I also use pandas for analysis.")
+
+    assert result.memory_id == original.memory_id
+    assert result.content == "I use Python and pandas for analysis."
+    assert result.embedding == [0.0, 1.0]
+    assert service.storage.get_history(result.memory_id)[0]["operation"] == "RELATED"
+
+
+def test_contradictory_update_preserves_audit_history(tmp_path):
+    seed = build_service(tmp_path)
+    original = seed.store_memory("user-1", "I use Python for analysis.")
+    service, _ = build_phase3_service(
+        tmp_path,
+        [ConsolidationDecision(
+            action="CONTRADICTORY",
+            merged_content="I now use Rust for systems work.",
+            reason="newer preference",
+        )],
+    )
+
+    result = service.store_memory("user-1", "I now use Rust for systems work.")
+    history = service.storage.get_history(result.memory_id)
+
+    assert result.memory_id == original.memory_id
+    assert result.content == "I now use Rust for systems work."
+    assert history[0]["old_content"] == "I use Python for analysis."
+    assert history[0]["new_content"] == result.content
+
+
+def test_working_to_long_term_compression_preserves_importance(tmp_path):
+    service, llm = build_phase3_service(
+        tmp_path, [ConsolidationDecision(action="NEW")]
+    )
+    memory = service.store_memory("user-1", "My goal is to pass AWS certification.")
+    importance = memory.importance_score
+
+    result = service.transition_memory(memory.memory_id, LONG_TERM)
+
+    assert result.tier == LONG_TERM
+    assert result.compression_level == 1
+    assert result.importance_score == importance
+    assert llm.compression_levels == [1]
+    assert service.storage.get_history(memory.memory_id)[0]["operation"] == "COMPRESSED"
+
+
+def test_short_term_to_archive_uses_stronger_compression(tmp_path):
+    service, llm = build_phase3_service(
+        tmp_path, [ConsolidationDecision(action="NEW")]
+    )
+    memory = service.store_memory("user-1", "A medium-value project detail.")
+    memory.tier = SHORT_TERM
+    service.storage.update_memory(memory)
+    importance = memory.importance_score
+
+    result = service.transition_memory(memory.memory_id, ARCHIVE)
+
+    assert result.tier == ARCHIVE
+    assert result.compression_level == 2
+    assert result.importance_score == importance
+    assert llm.compression_levels == [2]

@@ -21,6 +21,17 @@ CREATE TABLE IF NOT EXISTS memories (
     tier TEXT NOT NULL DEFAULT 'WORKING',
     compression_level INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS memory_history (
+    history_id TEXT PRIMARY KEY,
+    memory_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    old_content TEXT,
+    new_content TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL
 )
 """
 
@@ -90,6 +101,17 @@ class SQLiteStorage:
             ).fetchall()
         return [Memory.from_row(tuple(row)) for row in rows]
 
+    def get_memory(self, memory_id: str) -> Memory | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT memory_id, user_id, content, embedding, created_at,
+                   last_accessed, access_count, importance_score, tier,
+                   compression_level, updated_at
+                   FROM memories WHERE memory_id = ?""",
+                (memory_id,),
+            ).fetchone()
+        return Memory.from_row(tuple(row)) if row else None
+
     def update_access_metadata(self, memory_id: str, accessed_at=None) -> None:
         """Update retrieval metadata for a returned memory."""
         accessed_at = accessed_at or utc_now()
@@ -123,6 +145,31 @@ class SQLiteStorage:
                 ),
             )
         return memory
+
+    def record_history(
+        self, memory: Memory, operation: str, old_content: str | None,
+        reason: str = "",
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO memory_history
+                   (history_id, memory_id, user_id, operation, old_content,
+                    new_content, reason, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()), memory.memory_id, memory.user_id,
+                    operation, old_content, memory.content, reason,
+                    utc_now().isoformat(),
+                ),
+            )
+
+    def get_history(self, memory_id: str) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY created_at",
+                (memory_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def count(self) -> int:
         """Return the number of persisted memories."""

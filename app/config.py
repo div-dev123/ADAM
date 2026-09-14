@@ -8,7 +8,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = "ADAM Phase 2"
+    app_name: str = "ADAM Phase 3"
     database_path: Path = Path("data/adam.db")
     embedding_model: str = "all-MiniLM-L6-v2"
     default_top_k: int = 5
@@ -23,6 +23,12 @@ class Settings:
     working_to_long_term_min_accesses: int = 1
     short_term_to_archive_age: timedelta = timedelta(days=30)
     archive_compression_level: int = 1
+    ollama_host: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:3b"
+    consolidation_candidate_limit: int = 3
+    consolidation_min_similarity: float = 0.35
+    working_compression_level: int = 1
+    archive_compression_level_target: int = 2
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -46,6 +52,20 @@ class Settings:
             ),
             archive_compression_level=int(
                 os.getenv("ARCHIVE_COMPRESSION_LEVEL", "1")
+            ),
+            ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+            consolidation_candidate_limit=int(
+                os.getenv("CONSOLIDATION_CANDIDATE_LIMIT", "3")
+            ),
+            consolidation_min_similarity=float(
+                os.getenv("CONSOLIDATION_MIN_SIMILARITY", "0.35")
+            ),
+            working_compression_level=int(
+                os.getenv("WORKING_COMPRESSION_LEVEL", "1")
+            ),
+            archive_compression_level_target=int(
+                os.getenv("ARCHIVE_COMPRESSION_LEVEL_TARGET", "2")
             ),
         )
 

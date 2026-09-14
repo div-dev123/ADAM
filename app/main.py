@@ -6,6 +6,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.llm.client import OllamaClient
+from app.memory.compression import CompressionConfig
+from app.memory.consolidation import ConsolidationConfig
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.storage import SQLiteStorage
 from app.memory.tiers import TierAssigner
@@ -48,6 +51,15 @@ def build_retrieval_service() -> RetrievalService:
         EmbeddingService(settings.embedding_model),
         scorer=HeuristicImportanceScorer(weights),
         lifecycle_policy=lifecycle_policy,
+        llm=OllamaClient(settings.ollama_host, settings.ollama_model),
+        consolidation_config=ConsolidationConfig(
+            candidate_limit=settings.consolidation_candidate_limit,
+            min_similarity=settings.consolidation_min_similarity,
+        ),
+        compression_config=CompressionConfig(
+            working_to_long_term_level=settings.working_compression_level,
+            short_term_to_archive_level=settings.archive_compression_level_target,
+        ),
     )
 
 
@@ -63,7 +75,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "phase": 2}
+    return {"status": "ok", "phase": 3}
 
 
 @app.post("/memory", status_code=201)
