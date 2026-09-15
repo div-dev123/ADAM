@@ -75,18 +75,14 @@ class OllamaClient(LLMClient):
             for item in candidates
         ) or "- none"
         prompt = (
-            "Classify the new memory against the candidate memories. "
-            "Return JSON only with these fields: action, merged_content, reason.\n"
-            "Rules:\n"
-            "- action must be exactly one of: NEW, DUPLICATE, RELATED, CONTRADICTORY\n"
-            "- NEW: no similar candidate exists\n"
-            "- DUPLICATE: new memory is essentially the same as a candidate\n"
-            "- RELATED: new memory adds detail to a candidate; merged_content MUST contain "
-            "the combined text of both memories\n"
-            "- CONTRADICTORY: new memory conflicts with a candidate; merged_content MUST "
-            "contain only the newer/correct information\n"
-            "IMPORTANT: For RELATED and CONTRADICTORY you MUST provide a non-empty merged_content. "
-            "If you cannot produce a merged_content, use NEW instead.\n\n"
+            "Analyze if the new memory should be consolidated with any candidate memory.\n"
+            "Respond in JSON format with fields: action, merged_content, reason.\n"
+            "Actions:\n"
+            "- RELATED: new memory expands or complements candidate topic; merged_content MUST integrate facts from both.\n"
+            "- CONTRADICTORY: new memory conflicts with or supersedes candidate; merged_content contains the updated state.\n"
+            "- DUPLICATE: essentially identical memory.\n"
+            "- NEW: distinctly different topic/fact, keep separate.\n"
+            "If choosing RELATED or CONTRADICTORY, merged_content is required.\n\n"
             f"New memory: {new_content}\nCandidates:\n{candidate_text}"
         )
         return self._request(prompt, ConsolidationDecision)

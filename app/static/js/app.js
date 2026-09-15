@@ -408,6 +408,19 @@
                 <div class="details-section-title">Consolidation Reasoning</div>
                 <p style="color: #cbd5e1; margin-bottom: 0.5rem;">${escapeHtml(userMemory.decision_reason || 'Standard storage classification')}</p>
                 
+                ${userMemory.score_breakdown && Object.keys(userMemory.score_breakdown).length > 0 ? `
+                    <div class="details-section-title">Multi-Signal Importance Breakdown</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.35rem; margin-bottom: 0.5rem;">
+                        ${Object.entries(userMemory.score_breakdown).map(([name, s]) => `
+                            <div style="background: rgba(15, 23, 42, 0.6); padding: 0.3rem 0.5rem; border-radius: 4px; border-left: 2px solid #38bdf8; font-size: 0.72rem;">
+                                <div style="font-weight: 600; text-transform: capitalize; color: #94a3b8;">${name} (${(s.weight * 100).toFixed(0)}%)</div>
+                                <div style="color: #38bdf8; font-family: monospace; font-size: 0.8rem;">Val: ${s.value} &rarr; +${s.contribution}</div>
+                                <div style="color: #64748b; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(s.reason || '')}">${escapeHtml(s.reason || '')}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
                 ${userMemory.old_content ? `
                     <div class="details-section-title">Content Evolution</div>
                     <div class="timeline-event-diff" style="margin-bottom: 0.5rem;">
@@ -422,7 +435,7 @@
                         <span>${escapeHtml(c.content)}</span>
                         <span style="color:#38bdf8;">Sim: ${c.similarity}</span>
                     </div>
-                `).join('') : '<div style="color:var(--text-muted);">No candidates exceeded cosine similarity threshold (0.35).</div>'}
+                `).join('') : '<div style="color:var(--text-muted);">No candidates exceeded cosine similarity threshold.</div>'}
             </div>
         `;
     }

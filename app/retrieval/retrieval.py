@@ -39,11 +39,11 @@ class RetrievalService:
             if llm else None
         )
 
-    def store_memory(self, user_id: str, content: str) -> Memory | None:
-        trace = self.store_memory_with_trace(user_id, content)
+    def store_memory(self, user_id: str, content: str, source_role: str = "user") -> Memory | None:
+        trace = self.store_memory_with_trace(user_id, content, source_role=source_role)
         return trace.get("memory")
 
-    def store_memory_with_trace(self, user_id: str, content: str) -> dict:
+    def store_memory_with_trace(self, user_id: str, content: str, source_role: str = "user") -> dict:
         """Store memory and return complete decision metadata for research inspection."""
         filler_detected, filler_reason = is_filler(content)
         if filler_detected:
@@ -58,17 +58,24 @@ class RetrievalService:
                 "importance_score": 0.0,
                 "tier": None,
                 "compression_level": 0,
+                "score_breakdown": {},
             }
 
+        score_breakdown = (
+            self.scorer.score_with_breakdown(content)
+            if hasattr(self.scorer, "score_with_breakdown")
+            else {"total": self.scorer.score(content), "signals": {}}
+        )
+
         if self.consolidation:
-            return self.consolidation.process_with_trace(user_id, content)
+            return self.consolidation.process_with_trace(user_id, content, source_role=source_role)
 
         memory = create_memory(user_id, content, self.embeddings.encode(content))
-        memory.importance_score = self.scorer.score(
+        memory.importance_score = score_breakdown.get("total", self.scorer.score(
             memory.content,
             access_count=memory.access_count,
             created_at=memory.created_at,
-        )
+        ))
         memory.tier = self.tier_assigner.initial_tier(memory.importance_score)
         self.storage.save_memory(memory)
         return {
@@ -82,6 +89,7 @@ class RetrievalService:
             "importance_score": memory.importance_score,
             "tier": memory.tier,
             "compression_level": memory.compression_level,
+            "score_breakdown": score_breakdown.get("signals", {}),
         }
 
     def search(self, user_id: str, query: str, top_k: int):
@@ -116,7 +124,7 @@ class RetrievalService:
         pipeline_stages = []
 
         # 1. User Message Memory Processing (Extraction, Importance, Tier, Consolidation)
-        user_memory_trace = self.store_memory_with_trace(user_id, message)
+        user_memory_trace = self.store_memory_with_trace(user_id, message, source_role="user")
         if user_memory_trace["is_stored"]:
             pipeline_stages.append({
                 "stage": "User Message Memory Analysis & Scoring",
@@ -187,6 +195,7 @@ class RetrievalService:
                 "importance_score": 0.0,
                 "tier": None,
                 "compression_level": 0,
+                "score_breakdown": {},
             }
             pipeline_stages.append({
                 "stage": "Response Memory Processing",
@@ -194,8 +203,8 @@ class RetrievalService:
                 "detail": f"Ignored boilerplate response ({filler_reason})",
             })
         else:
-            # Informative LLM response is analyzed and stored in memory
-            assistant_memory_trace = self.store_memory_with_trace(user_id, response_text)
+            # Informative LLM response is analyzed and stored in memory with role isolation
+            assistant_memory_trace = self.store_memory_with_trace(user_id, response_text, source_role="assistant")
             pipeline_stages.append({
                 "stage": "Response Memory Processing",
                 "status": "completed",
@@ -216,6 +225,7 @@ class RetrievalService:
                 "last_accessed": mem.last_accessed.isoformat(),
                 "access_count": mem.access_count,
                 "updated_at": mem.updated_at.isoformat() if mem.updated_at else mem.created_at.isoformat(),
+                "superseded_by": getattr(mem, "superseded_by", None),
             }
 
         user_mem_obj = user_memory_trace.get("memory")
@@ -237,6 +247,7 @@ class RetrievalService:
                 "importance_score": user_memory_trace.get("importance_score", 0.0),
                 "tier": user_memory_trace.get("tier"),
                 "compression_level": user_memory_trace.get("compression_level", 0),
+                "score_breakdown": user_memory_trace.get("score_breakdown", {}),
             },
             "retrieved_memories": [
                 {
@@ -256,6 +267,7 @@ class RetrievalService:
                 "importance_score": assistant_memory_trace.get("importance_score", 0.0),
                 "tier": assistant_memory_trace.get("tier"),
                 "compression_level": assistant_memory_trace.get("compression_level", 0),
+                "score_breakdown": assistant_memory_trace.get("score_breakdown", {}),
             },
             "pipeline_stages": pipeline_stages,
             "llm_error": llm_error,

@@ -294,4 +294,117 @@ def test_chat_endpoint_stores_low_value_non_filler_in_archive(tmp_path):
     assert data["user_memory"]["importance_score"] <= 0.30
 
 
+def test_scorer_returns_detailed_signal_breakdown():
+    from app.memory.importance import HeuristicImportanceScorer
+    scorer = HeuristicImportanceScorer()
+
+    breakdown = scorer.score_with_breakdown("Please remember that my primary language is Python.")
+    assert breakdown["is_filler"] is False
+    assert 0.0 < breakdown["total"] <= 1.0
+    assert "signals" in breakdown
+    for signal_name in ["intent", "specificity", "durability", "salience", "recurrence", "recency"]:
+        assert signal_name in breakdown["signals"]
+        sig = breakdown["signals"][signal_name]
+        assert "value" in sig
+        assert "weight" in sig
+        assert "contribution" in sig
+        assert "reason" in sig
+        assert sig["contribution"] == round(sig["value"] * sig["weight"], 4)
+
+
+def test_domain_agnostic_specificity_recognizes_non_cs_entities():
+    from app.memory.importance import HeuristicImportanceScorer
+    scorer = HeuristicImportanceScorer()
+
+    # Non-CS medical content with specific entities and metrics
+    medical = scorer.score_with_breakdown("Patient presented with HbA1c 7.8% and prescribed Metformin 500mg daily.")
+    spec_signal = medical["signals"]["specificity"]
+    assert spec_signal["value"] >= 0.45
+    assert "entities" in spec_signal["reason"].lower() or "entity" in spec_signal["reason"].lower()
+
+
+def test_heuristic_first_consolidation_skips_llm_for_exact_duplicate(tmp_path):
+    from app.llm.client import ConsolidationDecision
+    from tests.test_phase1 import build_phase3_service
+
+    # Provide an LLM that would fail if called
+    class StrictLLM:
+        def classify_memory(self, new_content, candidates):
+            raise AssertionError("LLM should not be called for heuristic DUPLICATE (sim >= 0.92)!")
+
+    service, _ = build_phase3_service(tmp_path, [])
+    service.consolidation.llm = StrictLLM()
+
+    # Seed initial memory
+    service.store_memory("user-1", "I use Python for analysis.")
+    initial_count = service.storage.count()
+
+    # Store identical memory (FakeModel returns [0.0, 1.0] for both -> cosine similarity = 1.0 >= 0.92)
+    trace = service.store_memory_with_trace("user-1", "I use Python for analysis.")
+    assert trace["action"] == "DUPLICATE"
+    assert "Heuristic" in trace["decision_reason"]
+    assert service.storage.count() == initial_count
+
+
+def test_source_role_isolation_prevents_cross_role_merging(tmp_path):
+    from app.llm.client import ConsolidationDecision
+    from tests.test_phase1 import build_phase3_service
+
+    service, _ = build_phase3_service(
+        tmp_path,
+        [ConsolidationDecision(
+            action="RELATED",
+            merged_content="Combined user and assistant content.",
+            reason="related topic",
+        )],
+    )
+
+    # Store user query
+    user_mem = service.store_memory("user-1", "Can you explain memory management?", source_role="user")
+    assert user_mem is not None
+
+    # Simulate assistant response on the same topic — with role isolation it should not merge into user's query
+    assistant_trace = service.store_memory_with_trace(
+        "user-1",
+        "Memory management involves tiering and adaptive decay.",
+        source_role="assistant",
+    )
+    # Both memories should exist independently
+    assert assistant_trace["memory"].memory_id != user_mem.memory_id
+    assert service.storage.count() == 2
+
+
+def test_safe_contradiction_preserves_both_memories_and_marks_superseded(tmp_path):
+    from app.llm.client import ConsolidationDecision
+    from tests.test_phase1 import build_phase3_service
+
+    service, _ = build_phase3_service(
+        tmp_path,
+        [ConsolidationDecision(
+            action="CONTRADICTORY",
+            merged_content="I now use Rust exclusively.",
+            reason="user switched technologies",
+        )],
+    )
+
+    # Temporarily set high heuristic threshold so it reaches LLM branch
+    service.consolidation.config = service.consolidation.config.__class__(
+        candidate_limit=2,
+        min_similarity=0.35,
+        heuristic_duplicate_threshold=1.5,
+        heuristic_new_threshold=0.0,
+    )
+
+    old_mem = service.store_memory("user-1", "I use Python for analysis.")
+    new_mem = service.store_memory("user-1", "I now use Rust exclusively.")
+
+    assert new_mem.memory_id != old_mem.memory_id
+    # Old memory should have superseded_by set to new memory
+    updated_old = service.storage.get_memory(old_mem.memory_id)
+    assert updated_old.superseded_by == new_mem.memory_id
+    # Both memories preserved in database
+    assert service.storage.count() == 2
+
+
+
 

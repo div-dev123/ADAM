@@ -22,6 +22,7 @@ class Memory:
     tier: str = "WORKING"
     compression_level: int = 0
     updated_at: datetime | None = None
+    superseded_by: str | None = None
 
     def __post_init__(self):
         if self.updated_at is None:
@@ -40,6 +41,7 @@ class Memory:
             self.tier,
             self.compression_level,
             self.updated_at.isoformat(),
+            self.superseded_by or "",
         )
 
     @classmethod
@@ -60,4 +62,5 @@ class Memory:
                 if len(row) > 10 and row[10]
                 else datetime.fromisoformat(row[4])
             ),
+            superseded_by=row[11] if len(row) > 11 and row[11] else None,
         )

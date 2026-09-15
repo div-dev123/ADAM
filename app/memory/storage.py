@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS memories (
     importance_score REAL NOT NULL DEFAULT 0.0,
     tier TEXT NOT NULL DEFAULT 'WORKING',
     compression_level INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT ''
+    updated_at TEXT NOT NULL DEFAULT '',
+    superseded_by TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS memory_history (
@@ -72,6 +73,10 @@ class SQLiteStorage:
                 connection.execute(
                     "ALTER TABLE memories ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
                 )
+            if "superseded_by" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN superseded_by TEXT NOT NULL DEFAULT ''"
+                )
             connection.execute(
                 "UPDATE memories SET updated_at = created_at WHERE updated_at = ''"
             )
@@ -83,8 +88,8 @@ class SQLiteStorage:
                 """INSERT INTO memories
                 (memory_id, user_id, content, embedding, created_at,
                  last_accessed, access_count, importance_score, tier,
-                 compression_level, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 compression_level, updated_at, superseded_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 memory.to_row(),
             )
         return memory
@@ -95,7 +100,7 @@ class SQLiteStorage:
             rows = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count
-                   , importance_score, tier, compression_level, updated_at
+                   , importance_score, tier, compression_level, updated_at, superseded_by
                    FROM memories WHERE user_id = ?""",
                 (user_id,),
             ).fetchall()
@@ -106,7 +111,7 @@ class SQLiteStorage:
             row = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count, importance_score, tier,
-                   compression_level, updated_at
+                   compression_level, updated_at, superseded_by
                    FROM memories WHERE memory_id = ?""",
                 (memory_id,),
             ).fetchone()
@@ -130,7 +135,7 @@ class SQLiteStorage:
             connection.execute(
                 """UPDATE memories SET content = ?, embedding = ?,
                    last_accessed = ?, access_count = ?, importance_score = ?,
-                   tier = ?, compression_level = ?, updated_at = ?
+                   tier = ?, compression_level = ?, updated_at = ?, superseded_by = ?
                    WHERE memory_id = ?""",
                 (
                     memory.content,
@@ -141,6 +146,7 @@ class SQLiteStorage:
                     memory.tier,
                     memory.compression_level,
                     memory.updated_at.isoformat(),
+                    memory.superseded_by or "",
                     memory.memory_id,
                 ),
             )
@@ -185,7 +191,7 @@ class SQLiteStorage:
         """Fetch memories with optional user, tier, or search filters."""
         query = """SELECT memory_id, user_id, content, embedding, created_at,
                           last_accessed, access_count, importance_score, tier,
-                          compression_level, updated_at
+                          compression_level, updated_at, superseded_by
                    FROM memories WHERE 1=1"""
         params = []
         if user_id:

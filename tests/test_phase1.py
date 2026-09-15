@@ -211,7 +211,8 @@ def test_new_memory_is_created_and_only_similar_candidates_are_sent(tmp_path):
 
     assert service.storage.count() == 1
     assert memory.tier in {WORKING, SHORT_TERM, ARCHIVE}
-    assert llm.classification_candidates == [[]]
+    # Heuristic-first consolidation skips LLM call when no candidates exist
+    assert len(llm.classification_candidates) == 0
 
 
 def test_duplicate_updates_access_without_creating_memory(tmp_path):
@@ -227,7 +228,8 @@ def test_duplicate_updates_access_without_creating_memory(tmp_path):
     assert service.storage.count() == 1
     assert result.access_count == 1
     assert service.storage.get_history(original.memory_id)[0]["operation"] == "DUPLICATE"
-    assert len(llm.classification_candidates[0]) == 1
+    # Heuristic DUPLICATE skips LLM call when identical content and high cosine similarity
+    assert len(llm.classification_candidates) == 0
 
 
 def test_related_merges_and_recalculates_embedding(tmp_path):
@@ -263,12 +265,16 @@ def test_contradictory_update_preserves_audit_history(tmp_path):
     )
 
     result = service.store_memory("user-1", "I now use Rust for systems work.")
-    history = service.storage.get_history(result.memory_id)
+    history = service.storage.get_history(original.memory_id)
 
-    assert result.memory_id == original.memory_id
+    # Safe CONTRADICTORY creates a new memory and marks old as superseded
+    assert result.memory_id != original.memory_id
     assert result.content == "I now use Rust for systems work."
     assert history[0]["old_content"] == "I use Python for analysis."
-    assert history[0]["new_content"] == result.content
+    assert "Superseded by" in history[0]["reason"]
+    # Check that original memory in storage has superseded_by pointer
+    updated_original = service.storage.get_memory(original.memory_id)
+    assert updated_original.superseded_by == result.memory_id
 
 
 def test_working_to_long_term_compression_preserves_importance(tmp_path):

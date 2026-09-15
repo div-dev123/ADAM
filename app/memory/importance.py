@@ -106,27 +106,66 @@ def is_filler(text: str) -> tuple[bool, str]:
 # Multi-Signal Importance Scoring
 # ---------------------------------------------------------------------------
 
+# Graduated intent categories with specific weights
+INTENT_CATEGORY_PATTERNS = [
+    # Explicit user directives to the system (strength: 1.0)
+    (
+        "directive",
+        1.0,
+        [
+            r"\b(remember that|please remember|remember this|note that|keep in mind|don't forget|dont forget)\b",
+            r"\b(store this|save this|record this|make a note)\b",
+        ],
+    ),
+    # Identity, profile, and enduring personal facts (strength: 0.9)
+    (
+        "identity",
+        0.9,
+        [
+            r"\b(my name is|i am a|i'm a|i live in|i speak|i work as|my job|my career|my role is)\b",
+            r"\b(my email is|my phone is|i am originally from|i grew up in)\b",
+        ],
+    ),
+    # Explicit preferences, goals, and passions (strength: 0.8)
+    (
+        "preference",
+        0.8,
+        [
+            r"\bi (prefer|like|love|hate|dislike|enjoy|favor|favour|adore)\b",
+            r"\b(favorite|favourite|interested in|passionate about)\b",
+            r"\b(my goal is|my goal|i want to|i plan to|i hope to|i need to|i intend to)\b",
+        ],
+    ),
+    # Active projects, research, engineering builds, and core preferences (strength: 0.85)
+    (
+        "project",
+        0.85,
+        [
+            r"\b(i am working|i'm working|working on|i am doing|i'm doing|doing a project|project (of|on|about|is|called)|the project is|my project|i am building|i'm building|building a|i develop|developing|i study|i research|my research)\b",
+            r"\b(i am learning|i'm learning|i learn)\b",
+        ],
+    ),
+    # Collaborative and team/workflow context (strength: 0.5)
+    (
+        "team",
+        0.5,
+        [
+            r"\b(we discussed|we decided|we agreed|we planned|team (discussed|decided|agreed|planned|assigned|reviewed))\b",
+            r"\b(sprint|standup|retrospective|assigned tasks?|assigned to|teammates?|colleagues?|coworkers?)\b",
+            r"\b(meeting|workshop|pair programming|code review|pull request|deployment|release|milestone)\b",
+        ],
+    ),
+]
+
+# Backward-compatibility flat pattern lists
 INTENT_PATTERNS = [
-    # Preferences & Emotions
-    r"\bi (prefer|like|love|hate|dislike|enjoy|favor|favour|adore)\b",
-    r"\b(favorite|favourite|interested in|passionate about)\b",
-    # Identity & Background
-    r"\b(my name is|i am a|i'm a|i live in|i speak|i work as|my job|my career)\b",
-    # Projects, Research & Engineering Work
-    r"\b(i am working|i'm working|working on|i am doing|i'm doing|doing a project|project (of|on|about|is|called)|the project is|my project|i am building|i'm building|building a|i develop|developing|i study|i research|my research)\b",
-    # Goals, Learning & Directives
-    r"\b(my goal is|my goal|i want to|i plan to|i hope to|i need to|i intend to|i am learning|i'm learning|i learn)\b",
-    r"\b(remember that|please remember|remember|note that|keep in mind|don't forget|dont forget)\b",
+    p for _, weight, patterns in INTENT_CATEGORY_PATTERNS if weight >= 0.7 for p in patterns
 ]
-
-# Partial-weight patterns: contribute 0.5 intent (collaborative/team work context)
-# These raise score above archive threshold but don't guarantee WORKING tier
 PARTIAL_INTENT_PATTERNS = [
-    r"\b(we discussed|we decided|we agreed|we planned|team (discussed|decided|agreed|planned|assigned|reviewed))\b",
-    r"\b(sprint|standup|retrospective|assigned tasks?|assigned to|teammates?|colleagues?|coworkers?)\b",
-    r"\b(meeting|workshop|pair programming|code review|pull request|deployment|release|milestone)\b",
+    p for _, weight, patterns in INTENT_CATEGORY_PATTERNS if weight < 0.7 for p in patterns
 ]
 
+# Specific domain keywords kept as a bonus signal
 SPECIFICITY_KEYWORDS = {
     "dsa", "java", "python", "c++", "rust", "golang", "javascript", "typescript",
     "react", "sql", "mongodb", "sqlite", "postgres", "redis", "docker", "kubernetes",
@@ -136,6 +175,29 @@ SPECIFICITY_KEYWORDS = {
     "throughput", "database", "indexing", "concurrency", "async", "api", "rest", "graphql",
     "architecture", "framework", "optimization", "pipeline", "compiler", "kernel",
     "aws", "gcp", "azure", "fastapi", "flask", "django", "git", "linux",
+}
+
+# English stop words / function words for information density calculation
+FUNCTION_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
+    "any", "are", "aren't", "as", "at", "be", "because", "been", "before", "being",
+    "below", "between", "both", "but", "by", "can't", "cannot", "could", "couldn't",
+    "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down", "during",
+    "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't",
+    "have", "haven't", "having", "he", "he'd", "he'll", "he's", "her", "here",
+    "here's", "hers", "herself", "him", "himself", "his", "how", "how's", "i",
+    "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "isn't", "it", "it's",
+    "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself",
+    "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "ought",
+    "our", "ours", "ourselves", "out", "over", "own", "same", "shan't", "she",
+    "she'd", "she'll", "she's", "should", "shouldn't", "so", "some", "such", "than",
+    "that", "that's", "the", "their", "theirs", "them", "themselves", "then",
+    "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've",
+    "this", "those", "through", "to", "too", "under", "until", "up", "very", "was",
+    "wasn't", "we", "we'd", "we'll", "we're", "we've", "were", "weren't", "what",
+    "what's", "when", "when's", "where", "where's", "which", "while", "who",
+    "who's", "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you",
+    "you'd", "you'll", "you're", "you've", "your", "yours", "yourself", "yourselves",
 }
 
 EPHEMERAL_PATTERNS = [
@@ -177,71 +239,226 @@ class HeuristicImportanceScorer:
         now: datetime | None = None,
     ) -> float:
         """Compute an inspectable, bounded [0.0, 1.0] importance score."""
-        # 1. Reject greetings and trivial conversational noise
-        filler_detected, _ = is_filler(content)
+        breakdown = self.score_with_breakdown(content, access_count, created_at, now)
+        return breakdown["total"]
+
+    def score_with_breakdown(
+        self,
+        content: str,
+        access_count: int = 0,
+        created_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """Compute importance score with a detailed, interpretable signal breakdown."""
+        filler_detected, filler_reason = is_filler(content)
         if filler_detected:
-            return 0.0
+            return {
+                "total": 0.0,
+                "is_filler": True,
+                "filler_reason": filler_reason,
+                "signals": {},
+            }
 
         text = content.lower().strip()
         words = text.split()
         if not words:
-            return 0.0
+            return {
+                "total": 0.0,
+                "is_filler": True,
+                "filler_reason": "empty",
+                "signals": {},
+            }
 
         weights = self.weights
 
-        # 2. Extract Individual Semantic / Content Signals
-        intent_score = self._compute_intent_score(text)
-        spec_score = self._compute_specificity_score(content, text, words)
-        dur_score = self._compute_durability_score(text, intent_score)
-        salience_score = min(len(words) / 15.0, 1.0)
+        # 1. Compute Individual Signals & Rationales
+        intent_score, intent_reason = self._compute_intent_score_and_reason(text)
+        spec_score, spec_reason = self._compute_domain_agnostic_specificity(content, text, words)
+        dur_score, dur_reason = self._compute_continuous_durability(text, intent_score)
+        salience_score, salience_reason = self._compute_information_density(words, content)
         rec_score = min(max(access_count, 0) / 3.0, 1.0)
         recency_score = self._compute_recency(created_at, now)
 
-        # 3. Calculate Normalized Weighted Sum
-        total = (
-            weights.intent * intent_score
-            + weights.specificity * spec_score
-            + weights.durability * dur_score
-            + weights.salience * salience_score
-            + weights.recurrence * rec_score
-            + weights.recency * recency_score
-        )
+        # 2. Weighted Sum
+        signals = {
+            "intent": {
+                "value": round(intent_score, 4),
+                "weight": weights.intent,
+                "contribution": round(weights.intent * intent_score, 4),
+                "reason": intent_reason,
+            },
+            "specificity": {
+                "value": round(spec_score, 4),
+                "weight": weights.specificity,
+                "contribution": round(weights.specificity * spec_score, 4),
+                "reason": spec_reason,
+            },
+            "durability": {
+                "value": round(dur_score, 4),
+                "weight": weights.durability,
+                "contribution": round(weights.durability * dur_score, 4),
+                "reason": dur_reason,
+            },
+            "salience": {
+                "value": round(salience_score, 4),
+                "weight": weights.salience,
+                "contribution": round(weights.salience * salience_score, 4),
+                "reason": salience_reason,
+            },
+            "recurrence": {
+                "value": round(rec_score, 4),
+                "weight": weights.recurrence,
+                "contribution": round(weights.recurrence * rec_score, 4),
+                "reason": f"Accessed {access_count} times",
+            },
+            "recency": {
+                "value": round(recency_score, 4),
+                "weight": weights.recency,
+                "contribution": round(weights.recency * recency_score, 4),
+                "reason": "Exponential age decay",
+            },
+        }
 
-        return max(0.0, min(1.0, round(total, 4)))
+        total = sum(s["contribution"] for s in signals.values())
+        bounded_total = max(0.0, min(1.0, round(total, 4)))
+
+        return {
+            "total": bounded_total,
+            "is_filler": False,
+            "filler_reason": "",
+            "signals": signals,
+        }
+
+    @staticmethod
+    def _compute_intent_score_and_reason(text: str) -> tuple[float, str]:
+        """Graduated intent scoring based on intent category strength."""
+        for category, strength, patterns in INTENT_CATEGORY_PATTERNS:
+            for pat in patterns:
+                m = re.search(pat, text)
+                if m:
+                    return strength, f"{category}: '{m.group(0)}'"
+        return 0.0, "no explicit intent marker"
 
     @staticmethod
     def _compute_intent_score(text: str) -> float:
-        for pat in INTENT_PATTERNS:
-            if re.search(pat, text):
-                return 1.0
-        # Partial intent for collaborative/team context (raises above archive but not WORKING)
-        for pat in PARTIAL_INTENT_PATTERNS:
-            if re.search(pat, text):
-                return 0.5
-        return 0.0
+        score, _ = HeuristicImportanceScorer._compute_intent_score_and_reason(text)
+        return score
+
+    @staticmethod
+    def _extract_entities(raw_text: str, lower_text: str) -> list[str]:
+        """Lightweight entity extraction (acronyms, numbers, capitalized terms, quoted strings)."""
+        entities = []
+        # Acronyms (e.g. ADAM, DSA, LLM, API)
+        acronyms = re.findall(r"\b[A-Z]{2,}\b", raw_text)
+        entities.extend(acronyms)
+        # Quoted terms
+        quoted = re.findall(r'["\']([^"\']+)["\']', raw_text)
+        entities.extend(quoted)
+        # Numbers with units or standalone numbers
+        numbers = re.findall(r"\b\d+(?:\.\d+)?(?:[a-zA-Z%]+)?\b", raw_text)
+        entities.extend(numbers)
+        # Capitalized proper nouns (excluding first word of sentence)
+        tokens = raw_text.split()
+        for i, token in enumerate(tokens[1:], start=1):
+            clean = re.sub(r"[^\w]", "", token)
+            if clean and clean[0].isupper() and clean.lower() not in FUNCTION_WORDS:
+                entities.append(clean)
+        return list(dict.fromkeys(entities))  # Deduplicate preserving order
+
+    @staticmethod
+    def _compute_domain_agnostic_specificity(
+        raw_text: str, lower_text: str, words: list[str]
+    ) -> tuple[float, str]:
+        """Domain-agnostic specificity using entity density, vocab richness, and CS keywords bonus."""
+        entities = HeuristicImportanceScorer._extract_entities(raw_text, lower_text)
+        kw_matches = [kw for kw in SPECIFICITY_KEYWORDS if kw in lower_text]
+
+        # Vocabulary richness: unique words ratio (excluding stop words)
+        content_words = [w for w in words if w not in FUNCTION_WORDS]
+        vocab_richness = len(set(content_words)) / max(len(content_words), 1)
+
+        reasons = []
+        score = 0.1
+
+        # Base specificity from entity density and vocabulary richness
+        if len(entities) >= 3 or (len(entities) >= 2 and vocab_richness > 0.7):
+            score = max(score, 0.75)
+            reasons.append(f"{len(entities)} entities detected ({', '.join(entities[:3])})")
+        elif len(entities) >= 1:
+            score = max(score, 0.45)
+            reasons.append(f"Entity: {entities[0]}")
+        elif len(content_words) >= 5 and vocab_richness > 0.8:
+            score = max(score, 0.35)
+            reasons.append(f"Rich content vocabulary ({len(content_words)} content words)")
+
+        # CS / technical keywords bonus
+        if len(kw_matches) >= 2 or (len(kw_matches) >= 1 and len(entities) >= 1):
+            score = max(score, 1.0)
+            reasons.append(f"Tech terms: {', '.join(kw_matches[:3])}")
+        elif len(kw_matches) == 1:
+            score = max(score, 0.70)
+            reasons.append(f"Tech term: {kw_matches[0]}")
+
+        reason_str = "; ".join(reasons) if reasons else "General conversational text"
+        return min(1.0, score), reason_str
 
     @staticmethod
     def _compute_specificity_score(raw_text: str, lower_text: str, words: list[str]) -> float:
-        kw_matches = sum(1 for kw in SPECIFICITY_KEYWORDS if kw in lower_text)
-        acronyms = len(re.findall(r"\b[A-Z]{2,}\b", raw_text))
+        score, _ = HeuristicImportanceScorer._compute_domain_agnostic_specificity(
+            raw_text, lower_text, words
+        )
+        return score
 
-        if kw_matches >= 2 or (kw_matches >= 1 and acronyms >= 1):
-            return 1.0
-        if kw_matches == 1 or acronyms >= 1:
-            return 0.7
-        if len(re.findall(r"\b\d+\b", lower_text)) > 0:
-            return 0.4
-        if len(words) >= 6 and len(set(words)) / len(words) > 0.75:
-            return 0.35
-        return 0.1
+    @staticmethod
+    def _compute_continuous_durability(text: str, intent_score: float) -> tuple[float, str]:
+        """Continuous durability score [0.0 - 1.0] based on temporal vs. permanent indicators."""
+        # Check ephemeral signals
+        ephemeral_match = next((pat for pat in EPHEMERAL_PATTERNS if re.search(pat, text)), None)
+        if ephemeral_match:
+            return 0.1, "ephemeral / transient context"
+
+        # Architectural, permanent, or fundamental definitions
+        durable_match = next((pat for pat in DURABLE_PATTERNS if re.search(pat, text)), None)
+        if durable_match:
+            return 0.9, "architectural / enduring definition"
+
+        # Strong intent implies long-term durability
+        if intent_score >= 0.8:
+            return 0.85, "high intent implies enduring value"
+        if intent_score >= 0.5:
+            return 0.60, "moderate intent implies medium durability"
+
+        # General factual sentences with copula ("X is Y")
+        if re.search(r"\b(is a|are|consists|uses|requires)\b", text):
+            return 0.50, "factual / descriptive statement"
+
+        return 0.40, "default moderate durability"
 
     @staticmethod
     def _compute_durability_score(text: str, intent_score: float) -> float:
-        if any(re.search(pat, text) for pat in EPHEMERAL_PATTERNS):
-            return 0.1
-        if any(re.search(pat, text) for pat in DURABLE_PATTERNS) or intent_score >= 0.8:
-            return 0.85
-        return 0.45
+        score, _ = HeuristicImportanceScorer._compute_continuous_durability(text, intent_score)
+        return score
+
+    @staticmethod
+    def _compute_information_density(words: list[str], raw_text: str) -> tuple[float, str]:
+        """Information density and conversational salience rather than raw word count."""
+        num_words = len(words)
+        if num_words == 0:
+            return 0.0, "empty"
+
+        content_words = [w for w in words if w not in FUNCTION_WORDS]
+        density_ratio = len(content_words) / num_words
+
+        # Length factor: saturates around 20 words (instead of 15)
+        length_factor = min(num_words / 20.0, 1.0)
+
+        # Clause / structural complexity
+        has_punctuation_structure = bool(re.search(r"[,;:—\n]", raw_text))
+        complexity_bonus = 0.15 if has_punctuation_structure else 0.0
+
+        salience = (0.50 * length_factor) + (0.35 * density_ratio) + complexity_bonus
+        bounded = max(0.0, min(1.0, round(salience, 4)))
+        return bounded, f"Density {density_ratio:.2f}, {len(content_words)}/{num_words} content words"
 
     @staticmethod
     def _compute_recency(created_at: datetime | None, now: datetime | None) -> float:
