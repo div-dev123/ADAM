@@ -27,6 +27,7 @@ class Settings:
     archive_compression_level: int = 1
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:3b"
+    ollama_timeout: float = 120.0
     consolidation_candidate_limit: int = 3
     consolidation_min_similarity: float = 0.60
     working_compression_level: int = 1
@@ -63,6 +64,7 @@ class Settings:
             ),
             ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+            ollama_timeout=float(os.getenv("OLLAMA_TIMEOUT", "120.0")),
             consolidation_candidate_limit=int(
                 os.getenv("CONSOLIDATION_CANDIDATE_LIMIT", "3")
             ),

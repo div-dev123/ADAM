@@ -71,7 +71,7 @@ def build_retrieval_service() -> RetrievalService:
         EmbeddingService(settings.embedding_model),
         scorer=HeuristicImportanceScorer(weights),
         lifecycle_policy=lifecycle_policy,
-        llm=OllamaClient(settings.ollama_host, settings.ollama_model),
+        llm=OllamaClient(settings.ollama_host, settings.ollama_model, timeout=settings.ollama_timeout),
         consolidation_config=ConsolidationConfig(
             candidate_limit=settings.consolidation_candidate_limit,
             min_similarity=settings.consolidation_min_similarity,

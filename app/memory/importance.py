@@ -48,6 +48,10 @@ LLM_BOILERPLATE_PHRASES = (
     "i am here to help",
     "i'm here to help",
     "as an ai language model",
+    "i received your message and processed it into adam memory",
+    "local ollama generation was unavailable",
+    "ollama generation failed",
+    "memory processed successfully in adam",
 )
 
 

@@ -183,7 +183,27 @@ class RetrievalService:
 
         # 4. Assistant Response Memory Processing (Analysis & Storage)
         assistant_is_filler, filler_reason = is_filler(response_text)
-        if assistant_is_filler:
+        if llm_error:
+            # Fallback error notices must never be scored or stored as memory
+            assistant_memory_trace = {
+                "memory": None,
+                "action": "ERROR_FALLBACK",
+                "decision_reason": f"Ollama generation failed or timed out ({llm_error}); error notice not stored in memory",
+                "merged_content": None,
+                "old_content": None,
+                "candidates": [],
+                "is_stored": False,
+                "importance_score": 0.0,
+                "tier": None,
+                "compression_level": 0,
+                "score_breakdown": {},
+            }
+            pipeline_stages.append({
+                "stage": "Response Memory Processing",
+                "status": "completed",
+                "detail": f"Ollama unavailable; omitted error message from memory storage",
+            })
+        elif assistant_is_filler:
             assistant_memory_trace = {
                 "memory": None,
                 "action": "FILLER",
