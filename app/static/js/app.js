@@ -372,7 +372,7 @@
         if (!userMemory.is_stored || userMemory.action === 'FILLER') {
             container.innerHTML = `
                 <span class="badge badge-subtle" title="Trivial greeting or conversational filler was not stored in memory">
-                    🚫 Greeting / Filler (Ignored)
+                    Greeting / Filler (Ignored)
                 </span>
                 <button class="btn-details-toggle" onclick="window.ADAM.toggleDetails('user-details-${turnId}')">
                     <span>Details</span> ▾
@@ -392,15 +392,15 @@
 
         container.innerHTML = `
             <span class="badge ${impCat.class}" title="Intrinsic Information Value [0-1]">
-                ⭐ Importance: ${userMemory.importance_score.toFixed(2)} (${impCat.label})
+                Importance: ${userMemory.importance_score.toFixed(2)} (${impCat.label})
             </span>
             <span class="badge ${tierBadge.class}" title="Storage Tier">
-                🗄️ ${tierBadge.label}
+                ${tierBadge.label}
             </span>
             <span class="badge ${actBadge.class}" title="Consolidation Action">
-                ⚖️ ${actBadge.label}
+                ${actBadge.label}
             </span>
-            ${compLevel > 0 ? `<span class="badge badge-compression">📦 L${compLevel} Compressed</span>` : ''}
+            ${compLevel > 0 ? `<span class="badge badge-compression">L${compLevel} Compressed</span>` : ''}
             <button class="btn-details-toggle" onclick="window.ADAM.toggleDetails('user-details-${turnId}')">
                 <span>Details</span> ▾
             </button>
@@ -458,21 +458,21 @@
                 <div class="message-badges-bar">
                     ${isStored ? `
                         <span class="badge ${impCat.class}">
-                            ⭐ Stored: ${impScore.toFixed(2)} (${impCat.label})
+                            Stored: ${impScore.toFixed(2)} (${impCat.label})
                         </span>
                         <span class="badge ${tierBadge.class}">
-                            🗄️ ${tierBadge.label}
+                            ${tierBadge.label}
                         </span>
                         <span class="badge ${actBadge.class}">
-                            ⚖️ ${actBadge.label}
+                            ${actBadge.label}
                         </span>
                     ` : `
                         <span class="badge badge-subtle" title="LLM pleasantry or boilerplate was not stored">
-                            🚫 Boilerplate (Ignored)
+                            Boilerplate (Ignored)
                         </span>
                     `}
                     <span class="badge badge-subtle" title="Retrieved memories injected into context">
-                        🔍 ${retrievedCount} Injected ${retrievedCount === 1 ? 'Memory' : 'Memories'}
+                        ${retrievedCount} Injected ${retrievedCount === 1 ? 'Memory' : 'Memories'}
                     </span>
                     <button class="btn-details-toggle" onclick="window.ADAM.toggleDetails('asst-details-${turnId}')">
                         <span>Context & Storage</span> ▾
@@ -644,8 +644,8 @@
         return `
             <div class="memory-card" onclick="window.ADAM.inspectMemory('${memory.memory_id}')">
                 <div class="memory-card-header">
-                    <span class="badge ${impCat.class}">⭐ ${memory.importance_score.toFixed(2)} (${impCat.label})</span>
-                    ${compLevel > 0 ? `<span class="badge badge-compression">📦 L${compLevel}</span>` : ''}
+                    <span class="badge ${impCat.class}">Imp: ${memory.importance_score.toFixed(2)} (${impCat.label})</span>
+                    ${compLevel > 0 ? `<span class="badge badge-compression">L${compLevel}</span>` : ''}
                 </div>
                 <div class="memory-card-content">${escapeHtml(memory.content)}</div>
                 <div class="memory-card-meta">
@@ -658,9 +658,9 @@
                     <span>${formatTime(memory.last_accessed || memory.created_at)}</span>
                 </div>
                 <div class="card-actions-row" onclick="event.stopPropagation()">
-                    <button class="btn-card-action" onclick="window.ADAM.inspectMemory('${memory.memory_id}')">📜 History</button>
-                    <button class="btn-card-action" onclick="window.ADAM.openTierTransitionModal('${memory.memory_id}', '${escapeHtml(memory.content)}', '${memory.tier}')">🔄 Move</button>
-                    <button class="btn-card-action" style="color:#f43f5e;" onclick="window.ADAM.deleteMemory('${memory.memory_id}')">🗑️</button>
+                    <button class="btn-card-action" onclick="window.ADAM.inspectMemory('${memory.memory_id}')">History</button>
+                    <button class="btn-card-action" onclick="window.ADAM.openTierTransitionModal('${memory.memory_id}', '${escapeHtml(memory.content)}', '${memory.tier}')">Move</button>
+                    <button class="btn-card-action" style="color:#f43f5e;" onclick="window.ADAM.deleteMemory('${memory.memory_id}')">Delete</button>
                 </div>
             </div>
         `;
@@ -696,7 +696,7 @@
         if (!memoryId) {
             elements.tracerTimelineContainer.innerHTML = `
                 <div class="empty-state-card">
-                    <span class="empty-icon">📜</span>
+                    <div class="empty-icon-line"></div>
                     <p>Select a memory above to view its chronological event history.</p>
                 </div>
             `;
@@ -757,7 +757,7 @@
             if (historyItems.length === 0) {
                 elements.auditFeedList.innerHTML = `
                     <div class="empty-state-card">
-                        <span class="empty-icon">⚖️</span>
+                        <div class="empty-icon-line"></div>
                         <p>No consolidation events recorded yet. Start a chat or add memories to observe consolidation decisions.</p>
                     </div>
                 `;
@@ -967,12 +967,14 @@
         });
 
         // User Change
-        elements.userSelect.addEventListener('change', (e) => {
-            state.userId = e.target.value.trim() || 'user-1';
-            showToast(`Switched active user to: ${state.userId}`, 'info');
-            loadMemories();
-            loadMetrics();
-        });
+        if (elements.userSelect) {
+            elements.userSelect.addEventListener('change', (e) => {
+                state.userId = e.target.value.trim() || 'user-1';
+                showToast(`Switched active user to: ${state.userId}`, 'info');
+                loadMemories();
+                loadMetrics();
+            });
+        }
 
         // Chat Form
         elements.chatForm.addEventListener('submit', (e) => {

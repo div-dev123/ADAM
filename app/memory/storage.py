@@ -1,3 +1,4 @@
+from typing import Optional, Union
 """SQLite persistence for the Phase 1 memory system."""
 
 import sqlite3
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS memory_history (
 class SQLiteStorage:
     """Store memories in a local SQLite database."""
 
-    def __init__(self, database_path: str | Path = "data/adam.db"):
+    def __init__(self, database_path: Union[str, Path] = "data/adam.db"):
         self.database_path = Path(database_path)
         self.initialize_database()
 
@@ -106,7 +107,7 @@ class SQLiteStorage:
             ).fetchall()
         return [Memory.from_row(tuple(row)) for row in rows]
 
-    def get_memory(self, memory_id: str) -> Memory | None:
+    def get_memory(self, memory_id: str) -> Optional[Memory]:
         with self._connect() as connection:
             row = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
@@ -153,7 +154,7 @@ class SQLiteStorage:
         return memory
 
     def record_history(
-        self, memory: Memory, operation: str, old_content: str | None,
+        self, memory: Memory, operation: str, old_content: Optional[str],
         reason: str = "",
     ) -> None:
         with self._connect() as connection:
@@ -184,9 +185,9 @@ class SQLiteStorage:
 
     def get_all_memories(
         self,
-        user_id: str | None = None,
-        tier: str | None = None,
-        search: str | None = None,
+        user_id: Optional[str] = None,
+        tier: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> list[Memory]:
         """Fetch memories with optional user, tier, or search filters."""
         query = """SELECT memory_id, user_id, content, embedding, created_at,
@@ -209,7 +210,7 @@ class SQLiteStorage:
             rows = connection.execute(query, params).fetchall()
         return [Memory.from_row(tuple(row)) for row in rows]
 
-    def get_metrics(self, user_id: str | None = None) -> dict:
+    def get_metrics(self, user_id: Optional[str] = None) -> dict:
         """Calculate live research metrics from storage and history."""
         user_filter = "WHERE user_id = ?" if user_id else ""
         user_param = (user_id,) if user_id else ()
@@ -270,7 +271,7 @@ class SQLiteStorage:
             ),
         }
 
-    def get_all_history(self, limit: int = 50, user_id: str | None = None) -> list[dict]:
+    def get_all_history(self, limit: int = 50, user_id: Optional[str] = None) -> list[dict]:
         """Fetch the most recent consolidation/compression history records."""
         query = "SELECT * FROM memory_history"
         params = []

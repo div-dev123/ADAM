@@ -4,7 +4,7 @@ import json
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,7 +14,7 @@ ConsolidationAction = Literal["NEW", "DUPLICATE", "RELATED", "CONTRADICTORY"]
 
 class ConsolidationDecision(BaseModel):
     action: ConsolidationAction
-    merged_content: str | None = None
+    merged_content: Optional[str] = None
     reason: str = Field(default="", max_length=500)
 
     def merged_text(self) -> str:
@@ -43,8 +43,8 @@ class LLMClient(ABC):
     def generate_chat_response(
         self,
         user_message: str,
-        retrieved_memories: list[dict] | None = None,
-        chat_history: list[dict] | None = None,
+        retrieved_memories: Optional[list[dict]] = None,
+        chat_history: Optional[list[dict]] = None,
     ) -> str:
         raise NotImplementedError
 
@@ -99,8 +99,8 @@ class OllamaClient(LLMClient):
     def generate_chat_response(
         self,
         user_message: str,
-        retrieved_memories: list[dict] | None = None,
-        chat_history: list[dict] | None = None,
+        retrieved_memories: Optional[list[dict]] = None,
+        chat_history: Optional[list[dict]] = None,
     ) -> str:
         """Generate a response using Ollama with injected memory context."""
         context_blocks = []

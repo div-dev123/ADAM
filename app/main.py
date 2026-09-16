@@ -1,3 +1,4 @@
+from typing import Optional
 """FastAPI entry point for ADAM Research Prototype and Web Interface."""
 
 from contextlib import asynccontextmanager
@@ -192,16 +193,16 @@ def chat_turn(request: ChatTurnRequest):
 
 
 @app.get("/metrics")
-def get_metrics(user_id: str | None = Query(default=None)):
+def get_metrics(user_id: Optional[str] = Query(default=None)):
     """Return live research metrics."""
     return app.state.retrieval.storage.get_metrics(user_id=user_id)
 
 
 @app.get("/memories")
 def list_memories(
-    user_id: str | None = Query(default=None),
-    tier: str | None = Query(default=None),
-    search: str | None = Query(default=None),
+    user_id: Optional[str] = Query(default=None),
+    tier: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
 ):
     """List memories with optional filters."""
     memories = app.state.retrieval.storage.get_all_memories(
@@ -259,7 +260,7 @@ def delete_memory(memory_id: str):
 @app.get("/history")
 def list_history(
     limit: int = Query(default=50, ge=1, le=200),
-    user_id: str | None = Query(default=None),
+    user_id: Optional[str] = Query(default=None),
 ):
     """List recent global consolidation and compression history records."""
     return app.state.retrieval.storage.get_all_history(limit=limit, user_id=user_id)

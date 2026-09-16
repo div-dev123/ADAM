@@ -1,3 +1,4 @@
+from typing import Optional
 """LLM-backed lifecycle compression transitions."""
 
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ class CompressionService:
     """Compress only explicit lifecycle transitions, never normal creation."""
 
     def __init__(self, storage: SQLiteStorage, llm: LLMClient, embeddings,
-                 config: CompressionConfig | None = None):
+                 config: Optional[CompressionConfig] = None):
         self.storage = storage
         self.llm = llm
         self.embeddings = embeddings
@@ -50,7 +51,7 @@ class CompressionService:
         self.storage.record_history(memory, operation, old_content, reason)
         return memory
 
-    def _level_for(self, source: str, target: str) -> int | None:
+    def _level_for(self, source: str, target: str) -> Optional[int]:
         if target == LONG_TERM:
             return self.config.working_to_long_term_level
         if target == ARCHIVE:

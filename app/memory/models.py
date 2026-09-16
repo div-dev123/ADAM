@@ -1,3 +1,4 @@
+from typing import Optional
 """Memory data model with intrinsic value and lifecycle state separated."""
 
 import json
@@ -21,8 +22,8 @@ class Memory:
     importance_score: float = 0.0
     tier: str = "WORKING"
     compression_level: int = 0
-    updated_at: datetime | None = None
-    superseded_by: str | None = None
+    updated_at: Optional[datetime] = None
+    superseded_by: Optional[str] = None
 
     def __post_init__(self):
         if self.updated_at is None:

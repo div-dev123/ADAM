@@ -1,3 +1,4 @@
+from typing import Optional
 """Phase 1 semantic retrieval service with dual-turn memory storage."""
 
 from app.memory.models import Memory, utc_now
@@ -19,7 +20,7 @@ class RetrievalService:
         tier_assigner=None,
         lifecycle_policy=None,
         llm=None,
-        consolidation_config: ConsolidationConfig | None = None,
+        consolidation_config: Optional[ConsolidationConfig] = None,
         compression_config=None,
     ):
         self.storage = storage
@@ -39,7 +40,7 @@ class RetrievalService:
             if llm else None
         )
 
-    def store_memory(self, user_id: str, content: str, source_role: str = "user") -> Memory | None:
+    def store_memory(self, user_id: str, content: str, source_role: str = "user") -> Optional[Memory]:
         trace = self.store_memory_with_trace(user_id, content, source_role=source_role)
         return trace.get("memory")
 
@@ -118,7 +119,7 @@ class RetrievalService:
         user_id: str,
         message: str,
         top_k: int = 5,
-        chat_history: list[dict] | None = None,
+        chat_history: Optional[list[dict]] = None,
     ) -> dict:
         """Execute a full conversational turn with transparent memory processing for both user and LLM."""
         pipeline_stages = []

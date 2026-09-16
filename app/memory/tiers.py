@@ -1,3 +1,4 @@
+from typing import Optional
 """Configurable memory lifecycle policy for Phase 2."""
 
 from dataclasses import dataclass
@@ -31,7 +32,7 @@ class LifecyclePolicy:
             return WORKING
         return SHORT_TERM
 
-    def transition(self, memory: Memory, now: datetime | None = None) -> str:
+    def transition(self, memory: Memory, now: Optional[datetime] = None) -> str:
         """Return the next tier using lifecycle metadata, not importance."""
         current_time = now or datetime.now(timezone.utc)
         age = current_time - memory.created_at
@@ -50,7 +51,7 @@ class LifecyclePolicy:
                 return ARCHIVE
         return memory.tier
 
-    def apply_transition(self, memory: Memory, now: datetime | None = None) -> Memory:
+    def apply_transition(self, memory: Memory, now: Optional[datetime] = None) -> Memory:
         memory.tier = self.transition(memory, now)
         return memory
 

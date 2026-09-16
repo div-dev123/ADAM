@@ -1,3 +1,4 @@
+from typing import Optional
 """Transparent, configurable, and multi-signal importance scoring for ADAM."""
 
 import re
@@ -232,15 +233,15 @@ class ImportanceWeights:
 class HeuristicImportanceScorer:
     """Multi-signal, interpretable importance scorer combining semantic content signals."""
 
-    def __init__(self, weights: ImportanceWeights | None = None):
+    def __init__(self, weights: Optional[ImportanceWeights] = None):
         self.weights = weights or ImportanceWeights()
 
     def score(
         self,
         content: str,
         access_count: int = 0,
-        created_at: datetime | None = None,
-        now: datetime | None = None,
+        created_at: Optional[datetime] = None,
+        now: Optional[datetime] = None,
     ) -> float:
         """Compute an inspectable, bounded [0.0, 1.0] importance score."""
         breakdown = self.score_with_breakdown(content, access_count, created_at, now)
@@ -250,8 +251,8 @@ class HeuristicImportanceScorer:
         self,
         content: str,
         access_count: int = 0,
-        created_at: datetime | None = None,
-        now: datetime | None = None,
+        created_at: Optional[datetime] = None,
+        now: Optional[datetime] = None,
     ) -> dict:
         """Compute importance score with a detailed, interpretable signal breakdown."""
         filler_detected, filler_reason = is_filler(content)
@@ -465,7 +466,7 @@ class HeuristicImportanceScorer:
         return bounded, f"Density {density_ratio:.2f}, {len(content_words)}/{num_words} content words"
 
     @staticmethod
-    def _compute_recency(created_at: datetime | None, now: datetime | None) -> float:
+    def _compute_recency(created_at: Optional[datetime], now: Optional[datetime]) -> float:
         if created_at is None:
             return 1.0
         current = now or datetime.now(timezone.utc)

@@ -1,3 +1,4 @@
+from typing import Optional
 """LLM-assisted and heuristic-first consolidation for the Phase 3 write path."""
 
 import re
@@ -50,7 +51,7 @@ class ConsolidationService:
         self.lifecycle_policy = lifecycle_policy
         self.config = config
 
-    def process(self, user_id: str, content: str, source_role: str = "user") -> Memory | None:
+    def process(self, user_id: str, content: str, source_role: str = "user") -> Optional[Memory]:
         trace = self.process_with_trace(user_id, content, source_role=source_role)
         return trace.get("memory")
 
