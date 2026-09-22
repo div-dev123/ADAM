@@ -4,3 +4,6 @@ sentence-transformers
 numpy
 pytest
 httpx
+langchain>=0.3.0
+langchain-core>=0.3.0
+langgraph>=0.2.0

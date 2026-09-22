@@ -16,6 +16,7 @@ ADAM addresses this by decoupling **intrinsic factual value** (heuristic importa
 - **Selective Forgetting & Automatic Memory Lifecycle (Phase 4)**: Mathematical retention scoring based on Ebbinghaus exponential decay, access recurrence, and intrinsic importance. Safely transitions tiers and prunes obsolete, low-value memories with strict anti-amnesia guarantees and permanent audit logging.
 - **Adaptive Retrieval & Query Drift Detection (Phase 5)**: Compares current query with conversation context using semantic distance ($1 - \text{cosine similarity}$) and temporal staleness. Dynamically selects memory scope tiers (Low drift $\to$ `WORKING` + `SHORT_TERM`; Medium drift $\to$ includes `LONG_TERM`; High drift $\to$ broadens across all tiers including `ARCHIVE`) with rich telemetry and configurable thresholds.
 - **Two-Level Compression Engine**: Compresses aging memories (`WORKING` $\to$ `LONG_TERM` at Level 1; `SHORT_TERM` $\to$ `ARCHIVE` at Level 2) to preserve facts while reducing token overhead.
+- **LangChain & LangGraph Integrations**: First-class drop-in memory adapter (`ADAMLangChainMemory`, `ADAMChatMessageHistory`) for LangChain chat pipelines and autonomous agent tools (`retrieve_memory`, `store_memory`) for LangGraph ReAct agents.
 - **Offline & Graceful Degradation**: Functions standalone with local embeddings (`sentence-transformers/all-MiniLM-L6-v2`) and SQLite. If the local Ollama LLM (`qwen2.5:3b`) is offline or busy, the system gracefully falls back to deterministic heuristics.
 - **Interactive Research Web Interface**: Built-in 5-view single-page application (SPA) with real-time pipeline visualization, Kanban memory dashboard, state machine explorer, audit feed, and system metrics.
 
@@ -352,6 +353,112 @@ Every retrieved memory is returned with comprehensive telemetry:
 - `drift_level`: Detected drift category (`LOW`, `MEDIUM`, `HIGH`)
 - `scope_selection_reason`: Transparent human-readable explanation of why the scope was chosen
 - Every retrieved memory updates its `access_count` and `last_accessed` timestamp, preserving frequently utilized facts across the lifecycle.
+
+---
+
+### 7. Agentic AI Integrations: LangChain & LangGraph
+
+ADAM provides first-class, drop-in integration layers for **LangChain** and **LangGraph** without duplicating or rewriting any internal memory algorithms. ADAM remains the single authoritative source of truth for importance scoring, lifecycle tiering, duplicate/contradiction consolidation, and hybrid retrieval.
+
+#### Architecture: LangChain → ADAM
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           LANGCHAIN + ADAM INTEGRATION                          │
+│                                                                                 │
+│   User Prompt                                                                   │
+│       │                                                                         │
+│       ▼                                                                         │
+│   [LangChain Chain / LCEL Runnable]                                             │
+│       │                                                                         │
+│       ├──► (Pre-call) ADAMLangChainMemory.load_memory_variables()                │
+│       │        │                                                                │
+│       │        ▼                                                                │
+│       │    POST /retrieve ──► [Query Drift] ──► [Hybrid RRF Search]             │
+│       │                                                    │                    │
+│       │    Relevant Context Injected into Prompt ◄─────────┘                    │
+│       │                                                                         │
+│       ▼                                                                         │
+│   [LLM Generation (Ollama qwen2.5:3b)] ──► Assistant Response                   │
+│       │                                                                         │
+│       └──► (Post-call) ADAMLangChainMemory.save_context(user_input, ai_output)  │
+│                │                                                                │
+│                ▼                                                                │
+│            POST /memory ──► [Noise Filter] ──► [Scorer] ──► [Consolidation]     │
+│                                                                  │              │
+│                                    SQLite Storage & Audit ◄──────┘              │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Architecture: LangGraph Agent → ADAM Tools → SQLite
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         LANGGRAPH AGENT + ADAM TOOLS                            │
+│                                                                                 │
+│   User Interaction (Session 1 or Session 2)                                     │
+│       │                                                                         │
+│       ▼                                                                         │
+│   [LangGraph ReAct Agent (StateGraph)]                                          │
+│       │                                                                         │
+│       ├── Autonomous Decision: Recall needed?                                   │
+│       │     ▼                                                                   │
+│       │   [@tool retrieve_memory(query, user_id)]                               │
+│       │         │                                                               │
+│       │         ▼                                                               │
+│       │     POST /retrieve (Adaptive Scope, BM25 + Dense RRF)                   │
+│       │         │                                                               │
+│       │         ▼                                                               │
+│       │     Tool Output: Ranked relevant facts returned to Agent State          │
+│       │                                                                         │
+│       └── Autonomous Decision: Fact/decision worth storing?                     │
+│             ▼                                                                   │
+│           [@tool store_memory(content, user_id)]                                │
+│                 │                                                               │
+│                 ▼                                                               │
+│             POST /memory (Heuristic Scoring, Consolidation, Tiers)              │
+│                 │                                                               │
+│                 ▼                                                               │
+│             [SQLite Persistent Memory Storage & Audit Trail]                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Code Examples:
+
+**1. Using ADAM in a LangChain Chat Workflow (`app/integrations/langchain_memory.py`):**
+```python
+from app.integrations.langchain_memory import ADAMLangChainMemory
+
+# Drop-in ADAM memory adapter
+memory = ADAMLangChainMemory(
+    user_id="user_alice",
+    base_url="http://127.0.0.1:8000",
+    top_k=3,
+)
+
+# Pre-call: Retrieve context before invoking LLM
+context = memory.get_relevant_context("What database are we using?")
+print(context)
+
+# Post-call: Ingest dual-turn conversation into ADAM
+memory.save_context(
+    inputs={"input": "We decided to deploy PostgreSQL with connection pooling."},
+    outputs={"output": "Understood, PostgreSQL with connection pooling will be used for production."}
+)
+```
+
+**2. Using ADAM Tools in a LangGraph ReAct Agent (`app/integrations/langgraph_tools.py`):**
+```python
+from langgraph.prebuilt import create_react_agent
+from app.integrations.langgraph_tools import create_adam_tools
+
+# 1. Create session-bound ADAM tools
+tools = create_adam_tools(base_url="http://127.0.0.1:8000", user_id="user_alice")
+
+# 2. Build ReAct agent equipped with ADAM
+# agent = create_react_agent(model=llm, tools=tools)
+
+# 3. Agent autonomously calls store_memory or retrieve_memory
+# response = agent.invoke({"messages": [("user", "Please remember that our API timeout is 120 seconds.")]})
+```
 
 ---
 
@@ -724,6 +831,21 @@ Case C (High Drift - Query: "What was the name of Luigi's pizza restaurant downt
   - Telemetry: Broadens across all tiers, retrieving archived personal note without failing recall.
 ```
 
+### Scenario 7: LangGraph Agent Autonomous Tool-Use Across Sessions
+```text
+Session 1 (Ingestion):
+  User: "Please remember: For production, we decided to deploy PostgreSQL on AWS RDS with connection pooling enabled."
+  Agent: Evaluates prompt and autonomously calls tool `store_memory(content=...)`.
+  ADAM Backend: Evaluates importance (0.67), places into SHORT_TERM, consolidates, and persists to SQLite.
+  Agent Response: "Understood, I have stored the production PostgreSQL deployment decision in ADAM."
+
+Session 2 (Cross-Session Recall in a new thread):
+  User: "What database architecture did we decide on for production deployment?"
+  Agent: Detects missing local context and autonomously calls tool `retrieve_memory(query=...)`.
+  ADAM Backend: Runs adaptive drift detection and hybrid BM25 + Dense RRF search, returning the stored decision.
+  Agent Response: "Based on our past decision recorded in ADAM, we are deploying PostgreSQL on AWS RDS with connection pooling enabled."
+```
+
 ---
 
 ## Directory Structure
@@ -733,6 +855,10 @@ adam_memory/
 ├── app/
 │   ├── main.py                     # FastAPI application, lifespan, endpoints, static mounts
 │   ├── config.py                   # Environment-backed settings, scoring weights, drift thresholds
+│   ├── integrations/               # Agentic AI integration adapters
+│   │   ├── __init__.py             # Module exports
+│   │   ├── langchain_memory.py     # ADAMLangChainMemory & ADAMChatMessageHistory
+│   │   └── langgraph_tools.py      # retrieve_memory and store_memory agent tools & factory
 │   ├── llm/
 │   │   ├── __init__.py
 │   │   └── client.py               # LLMClient interface, OllamaClient (JSON mode), Pydantic schemas
@@ -761,13 +887,16 @@ adam_memory/
 │           └── app.js              # State store, live pipeline animator, tabs, modals, API client
 ├── data/
 │   └── adam.db                     # Local SQLite database (created on first run)
+├── examples/
+│   └── langgraph_agent_example.py  # Standalone multi-session LangGraph ReAct agent demonstration
 ├── tests/
+│   ├── test_integrations.py        # 11 tests for LangChain memory adapter & LangGraph agent tools
 │   ├── test_adaptive_retrieval.py  # 8 tests for drift detection, adaptive scopes, telemetry & API (Phase 5)
 │   ├── test_lifecycle.py           # 9 unit tests for forgetting policy, tier transitions, protection & API (Phase 4)
 │   ├── test_hybrid_search.py       # 9 tests for BM25, RRF, hybrid modes & empirical benchmark (Phase 3)
 │   ├── test_phase1.py              # 18 unit tests for core memory, tiers, scoring, consolidation
 │   └── test_web_api.py             # 15 tests for web API, chat pipeline, role isolation, heuristics
-├── requirements.txt                # Python dependencies
+├── requirements.txt                # Python dependencies (FastAPI, LangChain, LangGraph, etc.)
 └── README.md                       # Comprehensive framework documentation
 ```
 

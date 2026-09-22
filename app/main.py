@@ -192,6 +192,7 @@ def system_status():
 
 
 @app.post("/memory", status_code=201)
+@app.post("/memories", status_code=201)
 def store_memory(request: MemoryCreateRequest):
     try:
         memory = app.state.retrieval.store_memory(request.user_id, request.content)
