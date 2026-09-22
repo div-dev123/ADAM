@@ -1,12 +1,15 @@
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 """Phase 1 semantic retrieval service with dual-turn memory storage."""
 
+from app.memory.lifecycle import LifecyclePolicyConfig, MemoryLifecycleManager
 from app.memory.models import Memory, utc_now
 from app.memory.compression import CompressionService
 from app.memory.consolidation import ConsolidationConfig, ConsolidationService
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights, is_filler
 from app.memory.storage import SQLiteStorage, create_memory
 from app.memory.tiers import TierAssigner
+from app.retrieval.drift import DriftConfig, DriftResult, QueryDriftDetector
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.hybrid import HybridSearchService
 from app.retrieval.similarity import cosine_similarity
@@ -27,6 +30,10 @@ class RetrievalService:
         rrf_k: int = 60,
         bm25_k1: float = 1.5,
         bm25_b: float = 0.75,
+        lifecycle_config: Optional[LifecyclePolicyConfig] = None,
+        lifecycle_manager: Optional[MemoryLifecycleManager] = None,
+        drift_config: Optional[DriftConfig] = None,
+        drift_detector: Optional[QueryDriftDetector] = None,
     ):
         self.storage = storage
         self.embeddings = embeddings
@@ -51,6 +58,22 @@ class RetrievalService:
             CompressionService(storage, llm, embeddings, compression_config)
             if llm else None
         )
+        self.lifecycle_manager = (
+            lifecycle_manager
+            or MemoryLifecycleManager(
+                storage=storage,
+                config=lifecycle_config or LifecyclePolicyConfig(),
+                compression_service=self.compression,
+            )
+        )
+        self.drift_detector = (
+            drift_detector
+            or QueryDriftDetector(
+                embeddings=embeddings,
+                config=drift_config or DriftConfig(),
+            )
+        )
+        self.last_drift_result: Optional[DriftResult] = None
 
     def store_memory(self, user_id: str, content: str, source_role: str = "user") -> Optional[Memory]:
         trace = self.store_memory_with_trace(user_id, content, source_role=source_role)
@@ -112,13 +135,30 @@ class RetrievalService:
         top_k: int,
         include_superseded: bool = False,
         mode: Optional[str] = None,
-    ):
+        context: Optional[Union[str, List[Dict[str, Any]]]] = None,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+        context_time: Optional[datetime] = None,
+        scope_tiers: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        effective_context = context if context is not None else chat_history
+        drift_result = self.drift_detector.detect_drift(
+            query=query,
+            context=effective_context,
+            context_time=context_time,
+        )
+        self.last_drift_result = drift_result
+
+        target_tiers = scope_tiers or drift_result.scope_tiers
+
         memories = self.storage.get_memories(user_id)
         if not include_superseded:
             memories = [m for m in memories if not m.superseded_by]
 
+        # Apply adaptive scope filtering
+        scoped_memories = [m for m in memories if m.tier in target_tiers]
+
         search_mode = mode or self.search_mode
-        ranked = self.hybrid_service.search(query, memories, top_k=top_k, mode=search_mode)
+        ranked = self.hybrid_service.search(query, scoped_memories, top_k=top_k, mode=search_mode)
 
         results = []
         for item in ranked:
@@ -128,6 +168,14 @@ class RetrievalService:
             memory.last_accessed = accessed_at
             memory.updated_at = accessed_at
             memory.access_count += 1
+
+            # Enrich with Phase 5 adaptive retrieval metadata
+            item["memory_tier"] = memory.tier
+            item["importance"] = memory.importance_score
+            item["drift_level"] = drift_result.drift_level
+            item["drift_score"] = drift_result.drift_score
+            item["scope_selection_reason"] = drift_result.reason
+            item["scope_tiers"] = drift_result.scope_tiers
             results.append(item)
         return results
 
@@ -161,8 +209,19 @@ class RetrievalService:
                 "detail": f"Ignored greeting / filler ({user_memory_trace['decision_reason']})",
             })
 
-        # 2. Semantic Memory Retrieval for User Query
-        retrieved_raw = self.search(user_id, message, top_k=top_k)
+        # 2. Semantic Memory Retrieval for User Query with Adaptive Drift Detection
+        retrieved_raw = self.search(user_id, message, top_k=top_k, chat_history=chat_history)
+        drift = self.last_drift_result
+        drift_detail = (
+            f"Drift: {drift.drift_level} ({drift.drift_score:.2f}) -> Scope: {', '.join(drift.scope_tiers)}"
+            if drift
+            else "Default scope"
+        )
+        pipeline_stages.append({
+            "stage": "Query Drift & Adaptive Scope Detection",
+            "status": "completed",
+            "detail": drift_detail,
+        })
         pipeline_stages.append({
             "stage": "Memory Retrieval",
             "status": "completed",
@@ -319,3 +378,16 @@ class RetrievalService:
         if memory is None:
             raise KeyError(memory_id)
         return self.compression.transition(memory, target_tier)
+
+    def run_lifecycle_pass(
+        self,
+        user_id: Optional[str] = None,
+        dry_run: bool = False,
+        now=None,
+    ) -> dict:
+        """Run an automated lifecycle evaluation and selective forgetting pass."""
+        return self.lifecycle_manager.run_lifecycle_pass(
+            user_id=user_id,
+            dry_run=dry_run,
+            now=now,
+        )

@@ -13,6 +13,7 @@ ADAM addresses this by decoupling **intrinsic factual value** (heuristic importa
 - **Heuristic-First, LLM-Assisted Consolidation**: Resolves incoming information into one of four actions: `NEW`, `DUPLICATE`, `RELATED`, or `CONTRADICTORY`. Fast heuristic bypasses handle high-confidence duplicates and explicit contradictions without LLM latency; ambiguous cases fall back to local LLM classification with merge quality verification.
 - **Intelligent Noise & Filler Filtering**: Filters greetings, acknowledgments, small-talk, and LLM boilerplate phrases before they can pollute vector storage.
 - **Auditable Lifecycle & Transitions**: Every consolidation, merge, contradiction, and compression event writes an immutable audit record to SQLite with before/after diffs and reasoning.
+- **Selective Forgetting & Automatic Memory Lifecycle (Phase 4)**: Mathematical retention scoring based on Ebbinghaus exponential decay, access recurrence, and intrinsic importance. Safely transitions tiers and prunes obsolete, low-value memories with strict anti-amnesia guarantees and permanent audit logging.
 - **Two-Level Compression Engine**: Compresses aging memories (`WORKING` $\to$ `LONG_TERM` at Level 1; `SHORT_TERM` $\to$ `ARCHIVE` at Level 2) to preserve facts while reducing token overhead.
 - **Offline & Graceful Degradation**: Functions standalone with local embeddings (`sentence-transformers/all-MiniLM-L6-v2`) and SQLite. If the local Ollama LLM (`qwen2.5:3b`) is offline or busy, the system gracefully falls back to deterministic heuristics.
 - **Interactive Research Web Interface**: Built-in 5-view single-page application (SPA) with real-time pipeline visualization, Kanban memory dashboard, state machine explorer, audit feed, and system metrics.
@@ -212,11 +213,67 @@ ADAM uses a local SQLite database (`data/adam.db`) with two tables:
 | `history_id` | `TEXT PRIMARY KEY` | UUID string identifying the audit record |
 | `memory_id` | `TEXT NOT NULL` | Associated memory ID |
 | `user_id` | `TEXT NOT NULL` | User identifier |
-| `operation` | `TEXT NOT NULL` | `NEW`, `DUPLICATE`, `RELATED`, `CONTRADICTORY`, `COMPRESSED`, `PROMOTED` |
-| `old_content` | `TEXT` | Prior text content before update or compression |
-| `new_content` | `TEXT` | Updated or merged text content |
-| `reason` | `TEXT` | Human-readable explanation / classifier rationale |
+| `operation` | `TEXT NOT NULL` | `NEW`, `DUPLICATE`, `RELATED`, `CONTRADICTORY`, `COMPRESSED`, `PROMOTED`, `TIER_TRANSITION`, `FORGOTTEN` |
+| `old_content` | `TEXT` | Prior text content before update, compression, or forgotten content snapshot |
+| `new_content` | `TEXT` | Updated or merged text content (or `NULL` if forgotten) |
+| `reason` | `TEXT` | Human-readable explanation / classifier / lifecycle rationale |
 | `created_at` | `TEXT NOT NULL` | ISO 8601 UTC timestamp of the audit entry |
+
+---
+
+### 5. Selective Forgetting & Automatic Memory Lifecycle (Phase 4)
+
+In long-running agentic systems, storing memories indefinitely causes storage bloat, index degradation, and context poisoning with obsolete facts. ADAM introduces a **mathematical, continuous forgetting and lifecycle engine** rather than crude hard-coded deletion rules:
+
+```
+                          ┌───────────────────────────┐
+                          │   Memory Creation (New)   │
+                          └─────────────┬─────────────┘
+                                        │
+                         Initial Tier by Importance
+                                        │
+               ┌────────────────────────┼────────────────────────┐
+               ▼                        ▼                        ▼
+       ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
+       │    WORKING    │        │  SHORT_TERM   │        │    ARCHIVE    │
+       │ (Score ≥ 0.70)│        │(0.30 to 0.70) │        │ (Score ≤ 0.30)│
+       └───────┬───────┘        └───────┬───────┘        └───────┬───────┘
+               │                        │                        │
+        Age ≥ 7d, Inactive       Age ≥ 30d or             Obsolescence Check:
+        & Importance ≥ 0.60      Retention < 0.40         S_forget ≥ 0.75,
+               │                        │                 Age ≥ 60d, Unprotected
+               ▼                        ▼                        │
+       ┌───────────────┐                │                        ▼
+       │   LONG_TERM   │◄───────────────┘                ┌───────────────┐
+       │ (Consolidated)│                                 │   FORGOTTEN   │
+       └───────────────┘                                 │ (Audited Log) │
+                                                         └───────────────┘
+```
+
+#### Mathematical Retention & Forgetting Formulation:
+For every memory $m$, ADAM computes a continuous **Retention Score** $R(m) \in [0.0, 1.0]$:
+$$R(m) = \max\left(0.0, \min\left(1.0, \, w_i \cdot I(m) + w_r \cdot \text{RecencyScore}(m) + w_f \cdot \text{FrequencyScore}(m) - \text{Penalty}_{\text{comp}}(m)\right)\right)$$
+
+Where:
+* **$I(m)$**: Normalized intrinsic importance score $\in [0.0, 1.0]$.
+* **$\text{RecencyScore}(m) = e^{-\lambda \cdot \Delta t_{\text{inactive}}}$**: Ebbinghaus exponential decay modeling human forgetting ($\lambda=0.05$, half-life $\approx 14$ days).
+* **$\text{FrequencyScore}(m) = \min\left(1.0, \, \frac{\log(1 + \text{access\_count})}{\log(1 + N_{\text{target}})}\right)$**: Logarithmic access boost rewarding frequently retrieved memories.
+* **$\text{Penalty}_{\text{comp}}(m) = \text{compression\_level} \times 0.05$**: Minor penalty for highly condensed records.
+
+The **Forgetting Score** $S_{\text{forget}}(m)$ is:
+$$S_{\text{forget}}(m) = 1.0 - R(m)$$
+
+#### Policy Rules & Safety Guarantees:
+1. **Tier Transitions**:
+   - `WORKING` $\to$ `LONG_TERM`: When a working memory reaches age $\ge 7$ days, has been inactive for $\ge 5$ days, but retains high importance ($I \ge 0.60$) with at least 1 access.
+   - `SHORT_TERM` $\to$ `ARCHIVE`: When a short-term memory ages past 30 days or its retention score drops below $0.40$.
+   - **Active Retention Boost**: Frequently accessed memories ($\text{access\_count} \ge 3$) with recent activity are **immune to demotion**, staying in their active tiers longer.
+2. **Selective Forgetting (Deletion)**:
+   - A memory is eligible for forgetting if and only if $S_{\text{forget}}(m) \ge 0.75$, the memory is in `ARCHIVE` (or superseded), and it is **not protected**.
+3. **Anti-Amnesia Safety Constraints**:
+   - Memories with $I(m) \ge 0.70$ (high importance) or $\text{access\_count} \ge 3$ (frequent access) are **strictly protected** against automatic forgetting.
+4. **Permanent Audit Trail**:
+   - Deletion is completely auditable: when forgotten, ADAM logs `operation="FORGOTTEN"` to `memory_history` with the full content snapshot, mathematical reasoning, and timestamp. Audit history is never deleted.
 
 ---
 
@@ -277,6 +334,14 @@ All settings can be customized via environment variables or configured in `app/c
 | `RRF_K` | `60` | Integer | Reciprocal Rank Fusion smoothing parameter $k$ |
 | `BM25_K1` | `1.5` | Float | Okapi BM25 term frequency saturation parameter $k_1$ |
 | `BM25_B` | `0.75` | Float | Okapi BM25 document length normalization parameter $b$ |
+| `LIFECYCLE_FORGETTING_THRESHOLD` | `0.75` | Float | Minimum forgetting score to qualify an obsolete memory for deletion |
+| `LIFECYCLE_PROTECTED_IMPORTANCE` | `0.70` | Float | Memories with importance $\ge$ this are strictly protected from deletion |
+| `LIFECYCLE_PROTECTED_ACCESS_COUNT` | `3` | Integer | Memories accessed $\ge$ this many times are protected from deletion |
+| `LIFECYCLE_WORKING_AGE_DAYS` | `7.0` | Float | Days before a `WORKING` memory transitions to `LONG_TERM` |
+| `LIFECYCLE_SHORT_TERM_AGE_DAYS` | `30.0` | Float | Days before a `SHORT_TERM` memory demotes to `ARCHIVE` |
+| `LIFECYCLE_ARCHIVE_OBSOLETE_DAYS` | `60.0` | Float | Minimum age in `ARCHIVE` before an obsolete memory can be forgotten |
+| `LIFECYCLE_RECENCY_DECAY_RATE` | `0.05` | Float | Exponential decay constant $\lambda$ for Ebbinghaus recency decay |
+| `LIFECYCLE_FREQUENT_ACCESS_BOOST_THRESHOLD` | `3` | Integer | Access count required to grant an active retention boost |
 | `USE_TF` | `0` | Integer | Set to `0` to disable TensorFlow and suppress PyTorch/TF warnings |
 
 ---
@@ -300,6 +365,8 @@ Interactive OpenAPI (Swagger) documentation is available at `http://127.0.0.1:80
 | `GET` | `/memory/{id}/history` | Retrieves immutable audit history for a single memory |
 | `POST` | `/memory/{id}/transition` | Manually transitions a memory tier using lifecycle compression |
 | `DELETE` | `/memory/{id}` | Deletes a memory and its audit records |
+| `POST` | `/lifecycle/run` | Triggers an automated memory lifecycle evaluation and selective forgetting pass |
+| `GET` | `/lifecycle/policy` | Returns active mathematical parameters and thresholds for the memory lifecycle |
 | `GET` | `/history` | Global audit feed of recent consolidation/compression events |
 | `GET` | `/metrics` | Computes aggregate research metrics and tier distributions |
 | `POST` | `/reset` | Clears all data from the database with confirmation |
@@ -442,7 +509,7 @@ http://127.0.0.1:8000
 
 ## Automated Test Suite
 
-The project includes **42 automated test cases** covering every core subsystem, including an empirical evaluation benchmark:
+The project includes **51 automated test cases** covering every core subsystem, including empirical evaluation benchmarks and memory lifecycle management:
 
 ```bash
 source .venv/bin/activate
@@ -466,6 +533,15 @@ USE_TF=0 python -m pytest tests/test_hybrid_search.py -k test_hybrid_search_benc
 
 ### Test Coverage Breakdown
 
+- **`tests/test_lifecycle.py` (9 tests)**:
+  - Mathematical retention and forgetting score calculation ($R \in [0, 1]$, $S_{\text{forget}} \in [0, 1]$).
+  - Autonomous tier transitions (`WORKING` $\to$ `LONG_TERM`, `SHORT_TERM` $\to$ `ARCHIVE`).
+  - Active retention boosts preventing demotion for frequently accessed memories.
+  - Old, low-value memory archival.
+  - Selective forgetting removing obsolete archived memories.
+  - Anti-amnesia protection for high-importance ($I \ge 0.70$) and frequently accessed ($\text{accesses} \ge 3$) memories.
+  - Permanent audit logging of `FORGOTTEN` events in `memory_history`.
+  - REST API `POST /lifecycle/run` dry-run and live execution modes.
 - **`tests/test_hybrid_search.py` (9 tests)**:
   - BM25 tokenization, term frequency, length normalization, empty corpus handling.
   - Reciprocal Rank Fusion (RRF) consensus promotion and disjoint list handling.
@@ -535,6 +611,18 @@ ADAM:
   - Action: No memory created; response generated without polluting vector storage
 ```
 
+### Scenario 5: Selective Forgetting & Lifecycle Pass (Phase 4)
+```text
+Lifecycle Trigger: POST /lifecycle/run
+ADAM Evaluation:
+  - Memory A ("Temporary wifi password BlueSky2025", Age 90d, Accesses 0, Importance 0.10, Tier ARCHIVE):
+    -> Forgetting Score 0.94 >= 0.75, Unprotected
+    -> Action: FORGET. Deleted from active table; logged FORGOTTEN in memory_history.
+  - Memory B ("Core production schema definitions", Age 120d, Accesses 6, Importance 0.90, Tier LONG_TERM):
+    -> Importance 0.90 >= 0.70 & Accesses 6 >= 3
+    -> Action: PROTECT. Anti-amnesia protection guards critical fact from deletion.
+```
+
 ---
 
 ## Directory Structure
@@ -553,6 +641,7 @@ adam_memory/
 │   │   ├── storage.py              # SQLite storage engine, schema migrations, audit records, metrics
 │   │   ├── importance.py           # Multi-signal importance scorer & filler/boilerplate detector
 │   │   ├── tiers.py                # Operational lifecycle tiers (WORKING, SHORT_TERM, LONG_TERM, ARCHIVE)
+│   │   ├── lifecycle.py            # Phase 4 MemoryLifecycleManager, forgetting policy, anti-amnesia guards
 │   │   ├── consolidation.py        # Candidate search, heuristic-first consolidation, merge guards
 │   │   └── compression.py          # Level 1 & Level 2 lifecycle compression transitions
 │   ├── retrieval/
@@ -571,6 +660,7 @@ adam_memory/
 ├── data/
 │   └── adam.db                     # Local SQLite database (created on first run)
 ├── tests/
+│   ├── test_lifecycle.py           # 9 unit tests for forgetting policy, tier transitions, protection & API
 │   ├── test_hybrid_search.py       # 9 tests for BM25, RRF, hybrid modes & empirical benchmark
 │   ├── test_phase1.py              # 18 unit tests for core memory, tiers, scoring, consolidation
 │   └── test_web_api.py             # 15 tests for web API, chat pipeline, role isolation, heuristics

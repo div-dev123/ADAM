@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Optional
 """FastAPI entry point for ADAM Research Prototype and Web Interface."""
 
@@ -14,10 +15,17 @@ from app.llm.client import OllamaClient
 from app.memory.compression import CompressionConfig
 from app.memory.consolidation import ConsolidationConfig
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
+from app.memory.lifecycle import LifecyclePolicyConfig
 from app.memory.storage import SQLiteStorage
 from app.memory.tiers import TierAssigner
+from app.retrieval.drift import DriftConfig
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.retrieval import RetrievalService
+
+
+class LifecycleRunRequest(BaseModel):
+    user_id: Optional[str] = Field(default=None)
+    dry_run: bool = Field(default=False)
 
 
 class MemoryCreateRequest(BaseModel):
@@ -30,6 +38,9 @@ class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1)
     top_k: int = Field(default=settings.default_top_k, ge=1, le=settings.max_top_k)
     mode: Optional[str] = Field(default=None, pattern="^(hybrid|dense|sparse)$")
+    context: Optional[str] = Field(default=None)
+    chat_history: list[dict] = Field(default_factory=list)
+    scope_tiers: Optional[list[str]] = Field(default=None)
 
 
 class ChatTurnRequest(BaseModel):
@@ -68,6 +79,22 @@ def build_retrieval_service() -> RetrievalService:
         short_term_to_archive_age=settings.short_term_to_archive_age,
         archive_compression_level=settings.archive_compression_level,
     )
+    lifecycle_config = LifecyclePolicyConfig(
+        forgetting_threshold=settings.lifecycle_forgetting_threshold,
+        protected_importance=settings.lifecycle_protected_importance,
+        protected_access_count=settings.lifecycle_protected_access_count,
+        frequent_access_boost_threshold=settings.lifecycle_frequent_access_boost_threshold,
+        working_to_long_term_age=settings.working_to_long_term_age,
+        short_term_to_archive_age=settings.short_term_to_archive_age,
+        archive_obsolete_age=timedelta(days=settings.lifecycle_archive_obsolete_days),
+        recency_decay_lambda=settings.lifecycle_recency_decay_rate,
+    )
+    drift_config = DriftConfig(
+        low_drift_threshold=settings.drift_low_threshold,
+        high_drift_threshold=settings.drift_high_threshold,
+        time_weight=settings.drift_time_weight,
+        time_half_life_hours=settings.drift_time_half_life_hours,
+    )
     return RetrievalService(
         build_storage(),
         EmbeddingService(settings.embedding_model),
@@ -86,6 +113,8 @@ def build_retrieval_service() -> RetrievalService:
         rrf_k=settings.rrf_k,
         bm25_k1=settings.bm25_k1,
         bm25_b=settings.bm25_b,
+        lifecycle_config=lifecycle_config,
+        drift_config=drift_config,
     )
 
 
@@ -153,6 +182,11 @@ def system_status():
             "rrf_k": settings.rrf_k,
             "bm25_k1": settings.bm25_k1,
             "bm25_b": settings.bm25_b,
+            "lifecycle_forgetting_threshold": settings.lifecycle_forgetting_threshold,
+            "lifecycle_protected_importance": settings.lifecycle_protected_importance,
+            "lifecycle_protected_access_count": settings.lifecycle_protected_access_count,
+            "drift_low_threshold": settings.drift_low_threshold,
+            "drift_high_threshold": settings.drift_high_threshold,
         },
     }
 
@@ -177,7 +211,13 @@ def store_memory(request: MemoryCreateRequest):
 def search_memories(request: MemorySearchRequest):
     try:
         matches = app.state.retrieval.search(
-            request.user_id, request.query, request.top_k, mode=request.mode
+            user_id=request.user_id,
+            query=request.query,
+            top_k=request.top_k,
+            mode=request.mode,
+            context=request.context,
+            chat_history=request.chat_history,
+            scope_tiers=request.scope_tiers,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -185,6 +225,11 @@ def search_memories(request: MemorySearchRequest):
     for result in matches:
         item = {
             "similarity": result["similarity"],
+            "memory_tier": result.get("memory_tier", result["memory"].tier),
+            "importance": result.get("importance", result["memory"].importance_score),
+            "drift_level": result.get("drift_level"),
+            "drift_score": result.get("drift_score"),
+            "scope_selection_reason": result.get("scope_selection_reason"),
             "memory": memory_to_response(result["memory"]),
         }
         if "dense_score" in result:
@@ -194,8 +239,20 @@ def search_memories(request: MemorySearchRequest):
         if "rrf_score" in result:
             item["rrf_score"] = round(result["rrf_score"], 6)
         results.append(item)
+
+    drift_data = None
+    if hasattr(app.state.retrieval, "last_drift_result") and app.state.retrieval.last_drift_result:
+        d = app.state.retrieval.last_drift_result
+        drift_data = {
+            "level": d.drift_level,
+            "score": d.drift_score,
+            "scope_tiers": d.scope_tiers,
+            "reason": d.reason,
+        }
+
     return {
         "query": request.query,
+        "drift": drift_data,
         "results": results,
     }
 
@@ -269,6 +326,38 @@ def transition_memory_tier(memory_id: str, request: TransitionRequest):
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/lifecycle/run")
+def run_lifecycle(request: Optional[LifecycleRunRequest] = None):
+    """Trigger an automated memory lifecycle evaluation and selective forgetting pass."""
+    req = request or LifecycleRunRequest()
+    report = app.state.retrieval.run_lifecycle_pass(
+        user_id=req.user_id,
+        dry_run=req.dry_run,
+    )
+    return report
+
+
+@app.get("/lifecycle/policy")
+def get_lifecycle_policy():
+    """Retrieve active mathematical parameters and thresholds for the memory lifecycle."""
+    cfg = app.state.retrieval.lifecycle_manager.config
+    return {
+        "forgetting_threshold": cfg.forgetting_threshold,
+        "protected_importance": cfg.protected_importance,
+        "protected_access_count": cfg.protected_access_count,
+        "frequent_access_boost_threshold": cfg.frequent_access_boost_threshold,
+        "working_to_long_term_age_days": cfg.working_to_long_term_age.total_seconds() / 86400.0,
+        "working_to_long_term_importance_min": cfg.working_to_long_term_importance_min,
+        "short_term_to_archive_age_days": cfg.short_term_to_archive_age.total_seconds() / 86400.0,
+        "archive_obsolete_age_days": cfg.archive_obsolete_age.total_seconds() / 86400.0,
+        "recency_decay_lambda": cfg.recency_decay_lambda,
+        "weight_importance": cfg.weight_importance,
+        "weight_recency": cfg.weight_recency,
+        "weight_frequency": cfg.weight_frequency,
+        "compression_penalty_per_level": cfg.compression_penalty_per_level,
+    }
 
 
 @app.delete("/memory/{memory_id}")

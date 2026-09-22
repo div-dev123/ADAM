@@ -36,6 +36,20 @@ class Settings:
     rrf_k: int = 60
     bm25_k1: float = 1.5
     bm25_b: float = 0.75
+    # Phase 4 Lifecycle & Forgetting Settings
+    lifecycle_forgetting_threshold: float = 0.75
+    lifecycle_protected_importance: float = 0.70
+    lifecycle_protected_access_count: int = 3
+    lifecycle_working_age_days: float = 7.0
+    lifecycle_short_term_age_days: float = 30.0
+    lifecycle_archive_obsolete_days: float = 60.0
+    lifecycle_recency_decay_rate: float = 0.05
+    lifecycle_frequent_access_boost_threshold: int = 3
+    # Phase 5 Adaptive Retrieval & Query Drift Settings
+    drift_low_threshold: float = 0.55
+    drift_high_threshold: float = 0.85
+    drift_time_weight: float = 0.20
+    drift_time_half_life_hours: float = 1.0
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -85,6 +99,42 @@ class Settings:
             rrf_k=int(os.getenv("RRF_K", "60")),
             bm25_k1=float(os.getenv("BM25_K1", "1.5")),
             bm25_b=float(os.getenv("BM25_B", "0.75")),
+            lifecycle_forgetting_threshold=float(
+                os.getenv("LIFECYCLE_FORGETTING_THRESHOLD", "0.75")
+            ),
+            lifecycle_protected_importance=float(
+                os.getenv("LIFECYCLE_PROTECTED_IMPORTANCE", "0.70")
+            ),
+            lifecycle_protected_access_count=int(
+                os.getenv("LIFECYCLE_PROTECTED_ACCESS_COUNT", "3")
+            ),
+            lifecycle_working_age_days=float(
+                os.getenv("LIFECYCLE_WORKING_AGE_DAYS", "7.0")
+            ),
+            lifecycle_short_term_age_days=float(
+                os.getenv("LIFECYCLE_SHORT_TERM_AGE_DAYS", "30.0")
+            ),
+            lifecycle_archive_obsolete_days=float(
+                os.getenv("LIFECYCLE_ARCHIVE_OBSOLETE_DAYS", "60.0")
+            ),
+            lifecycle_recency_decay_rate=float(
+                os.getenv("LIFECYCLE_RECENCY_DECAY_RATE", "0.05")
+            ),
+            lifecycle_frequent_access_boost_threshold=int(
+                os.getenv("LIFECYCLE_FREQUENT_ACCESS_BOOST_THRESHOLD", "3")
+            ),
+            drift_low_threshold=float(
+                os.getenv("DRIFT_LOW_THRESHOLD", "0.55")
+            ),
+            drift_high_threshold=float(
+                os.getenv("DRIFT_HIGH_THRESHOLD", "0.85")
+            ),
+            drift_time_weight=float(
+                os.getenv("DRIFT_TIME_WEIGHT", "0.20")
+            ),
+            drift_time_half_life_hours=float(
+                os.getenv("DRIFT_TIME_HALF_LIFE_HOURS", "1.0")
+            ),
         )
 
 

@@ -260,6 +260,7 @@ class SQLiteStorage:
                 "RELATED": 0,
                 "CONTRADICTORY": 0,
                 "COMPRESSED": 0,
+                "FORGOTTEN": 0,
             }
             for row in consolidation_rows:
                 consolidation_counts[row[0]] = row[1]
@@ -270,6 +271,7 @@ class SQLiteStorage:
             "avg_importance": avg_importance,
             "compressed_memories": compressed_count,
             "archived_memories": tier_counts.get("ARCHIVE", 0),
+            "forgotten_memories": consolidation_counts.get("FORGOTTEN", 0),
             "consolidation_counts": consolidation_counts,
             "total_consolidations": sum(
                 consolidation_counts.get(k, 0)
@@ -290,6 +292,30 @@ class SQLiteStorage:
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+
+    def forget_memory(
+        self,
+        memory_id: str,
+        reason: str = "Selective forgetting policy",
+    ) -> bool:
+        """Auditably forget a memory: record 'FORGOTTEN' in memory_history and remove from memories table."""
+        memory = self.get_memory(memory_id)
+        if not memory:
+            return False
+        # Record audit log before deletion so that content, reason, and timestamp are preserved
+        self.record_history(
+            memory=memory,
+            operation="FORGOTTEN",
+            old_content=memory.content,
+            new_content=None,
+            reason=reason,
+        )
+        # Delete from memories table only, preserving memory_history for auditing
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM memories WHERE memory_id = ?", (memory_id,)
+            )
+            return cursor.rowcount > 0
 
     def delete_memory(self, memory_id: str) -> bool:
         """Delete a single memory and its history."""
