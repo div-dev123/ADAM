@@ -1,4 +1,3 @@
-from typing import Optional
 """Memory data model with intrinsic value and lifecycle state separated."""
 
 import json
@@ -22,8 +21,9 @@ class Memory:
     importance_score: float = 0.0
     tier: str = "WORKING"
     compression_level: int = 0
-    updated_at: Optional[datetime] = None
-    superseded_by: Optional[str] = None
+    updated_at: datetime | None = None
+    superseded_by: str | None = None
+    source_role: str = "user"  # "user" or "assistant"
 
     def __post_init__(self):
         if self.updated_at is None:
@@ -43,6 +43,7 @@ class Memory:
             self.compression_level,
             self.updated_at.isoformat(),
             self.superseded_by or "",
+            self.source_role or "user",
         )
 
     @classmethod
@@ -64,4 +65,5 @@ class Memory:
                 else datetime.fromisoformat(row[4])
             ),
             superseded_by=row[11] if len(row) > 11 and row[11] else None,
+            source_role=row[12] if len(row) > 12 and row[12] else "user",
         )

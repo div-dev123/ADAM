@@ -104,7 +104,14 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 def serve_index():
     index_file = static_dir / "index.html"
     if index_file.exists():
-        return FileResponse(str(index_file))
+        return FileResponse(
+            str(index_file),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     return {"message": f"Welcome to {settings.app_name}. Static UI index not yet generated."}
 
 
@@ -287,4 +294,6 @@ def memory_to_response(memory):
         "tier": memory.tier,
         "compression_level": memory.compression_level,
         "updated_at": memory.updated_at,
+        "superseded_by": memory.superseded_by,
+        "source_role": memory.source_role,
     }

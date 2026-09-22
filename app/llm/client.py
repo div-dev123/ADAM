@@ -76,14 +76,18 @@ class OllamaClient(LLMClient):
         ) or "- none"
         prompt = (
             "Analyze if the new memory should be consolidated with any candidate memory.\n"
-            "Respond in JSON format with fields: action, merged_content, reason.\n"
+            "Respond ONLY with valid JSON with fields: action, merged_content, reason.\n\n"
             "Actions:\n"
-            "- RELATED: new memory expands or complements candidate topic; merged_content MUST integrate facts from both.\n"
-            "- CONTRADICTORY: new memory conflicts with or supersedes candidate; merged_content contains the updated state.\n"
-            "- DUPLICATE: essentially identical memory.\n"
-            "- NEW: distinctly different topic/fact, keep separate.\n"
-            "If choosing RELATED or CONTRADICTORY, merged_content is required.\n\n"
-            f"New memory: {new_content}\nCandidates:\n{candidate_text}"
+            "- RELATED: new memory adds new non-conflicting information that expands a candidate.\n"
+            "  merged_content MUST integrate facts from both memories into one coherent sentence.\n"
+            "  Example: stored='I code in Python', new='I also use NumPy' → RELATED\n"
+            "- NEW: completely different topic, no meaningful overlap with any candidate.\n"
+            "  Example: stored='I code in Python', new='I prefer coffee over tea' → NEW\n\n"
+            "Important: Only use RELATED if the new memory genuinely adds new facts to a candidate.\n"
+            "If uncertain, prefer NEW.\n\n"
+            f"Stored memories:\n{candidate_text}\n\n"
+            f"New memory: \"{new_content}\"\n\n"
+            "Reply ONLY with JSON: {{\"action\": \"RELATED\" or \"NEW\", \"merged_content\": \"...\", \"reason\": \"...\"}}"
         )
         return self._request(prompt, ConsolidationDecision)
 
@@ -104,6 +108,7 @@ class OllamaClient(LLMClient):
     ) -> str:
         """Generate a response using Ollama with injected memory context."""
         context_blocks = []
+        user_msg_norm = user_message.strip().lower()
         if retrieved_memories:
             for item in retrieved_memories:
                 mem = item.get("memory")
@@ -112,6 +117,9 @@ class OllamaClient(LLMClient):
                     tier = getattr(mem, "tier", "UNKNOWN")
                     content = getattr(mem, "content", str(mem))
                     imp = getattr(mem, "importance_score", 0.0)
+                    # Don't inject redundant memory identical to the active user message
+                    if content.strip().lower() == user_msg_norm:
+                        continue
                     context_blocks.append(
                         f"• [{tier} | Importance: {imp:.2f} | Sim: {sim:.2f}] {content}"
                     )
@@ -119,10 +127,14 @@ class OllamaClient(LLMClient):
         context_text = "\n".join(context_blocks) if context_blocks else "None available."
 
         system_instruction = (
-            "You are ADAM Assistant, an intelligent conversational AI equipped with an Adaptive Memory Management Framework. "
-            "Use the retrieved memories below if they are relevant to answer the user accurately, naturally, and concisely.\n\n"
-            f"=== RETRIEVED MEMORIES ===\n{context_text}\n"
-            "==========================\n"
+            "You are ADAM Assistant, an intelligent conversational AI equipped with an Adaptive Dynamic Agent Memory (ADAM).\n"
+            "Important guidelines:\n"
+            "1. NEVER repeat, mirror, or echo the user's message back to them. Always provide an original, helpful assistant response.\n"
+            "2. When the user provides a personal update, fact, preference, or contradiction (such as 'Actually, I now use Rust instead of Python'), warmly and conversationally acknowledge the change (e.g. 'Got it! I\\'ve updated your preference to Rust instead of Python.').\n"
+            "3. Use the retrieved memories below if relevant to maintain continuity and answer questions about past context.\n"
+            "4. Keep answers concise, direct, and conversational.\n\n"
+            f"=== RETRIEVED RELEVANT MEMORIES ===\n{context_text}\n"
+            "===================================\n"
         )
 
         history_text = ""
@@ -148,7 +160,14 @@ class OllamaClient(LLMClient):
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
-                return body.get("response", "").strip()
+                raw = body.get("response", "").strip()
+                if raw.lower().startswith("assistant:"):
+                    raw = raw[10:].strip()
+                norm_resp = raw.lower().strip("\"' .!?")
+                norm_user = user_message.lower().strip("\"' .!?")
+                if not raw or norm_resp == norm_user:
+                    raw = f"Got it! I've noted that: \"{user_message.strip()}\"."
+                return raw
         except urllib.error.URLError as error:
             raise RuntimeError(f"Could not reach Ollama at {self.host}") from error
         except Exception as error:

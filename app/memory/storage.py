@@ -78,6 +78,10 @@ class SQLiteStorage:
                 connection.execute(
                     "ALTER TABLE memories ADD COLUMN superseded_by TEXT NOT NULL DEFAULT ''"
                 )
+            if "source_role" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN source_role TEXT NOT NULL DEFAULT 'user'"
+                )
             connection.execute(
                 "UPDATE memories SET updated_at = created_at WHERE updated_at = ''"
             )
@@ -89,8 +93,8 @@ class SQLiteStorage:
                 """INSERT INTO memories
                 (memory_id, user_id, content, embedding, created_at,
                  last_accessed, access_count, importance_score, tier,
-                 compression_level, updated_at, superseded_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 compression_level, updated_at, superseded_by, source_role)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 memory.to_row(),
             )
         return memory
@@ -101,7 +105,7 @@ class SQLiteStorage:
             rows = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count
-                   , importance_score, tier, compression_level, updated_at, superseded_by
+                   , importance_score, tier, compression_level, updated_at, superseded_by, source_role
                    FROM memories WHERE user_id = ?""",
                 (user_id,),
             ).fetchall()
@@ -112,7 +116,7 @@ class SQLiteStorage:
             row = connection.execute(
                 """SELECT memory_id, user_id, content, embedding, created_at,
                    last_accessed, access_count, importance_score, tier,
-                   compression_level, updated_at, superseded_by
+                   compression_level, updated_at, superseded_by, source_role
                    FROM memories WHERE memory_id = ?""",
                 (memory_id,),
             ).fetchone()
@@ -156,7 +160,9 @@ class SQLiteStorage:
     def record_history(
         self, memory: Memory, operation: str, old_content: Optional[str],
         reason: str = "",
+        new_content: Optional[str] = None,
     ) -> None:
+        effective_new_content = new_content if new_content is not None else memory.content
         with self._connect() as connection:
             connection.execute(
                 """INSERT INTO memory_history
@@ -165,7 +171,7 @@ class SQLiteStorage:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(uuid.uuid4()), memory.memory_id, memory.user_id,
-                    operation, old_content, memory.content, reason,
+                    operation, old_content, effective_new_content, reason,
                     utc_now().isoformat(),
                 ),
             )
@@ -192,7 +198,7 @@ class SQLiteStorage:
         """Fetch memories with optional user, tier, or search filters."""
         query = """SELECT memory_id, user_id, content, embedding, created_at,
                           last_accessed, access_count, importance_score, tier,
-                          compression_level, updated_at, superseded_by
+                          compression_level, updated_at, superseded_by, source_role
                    FROM memories WHERE 1=1"""
         params = []
         if user_id:
@@ -303,7 +309,7 @@ class SQLiteStorage:
             connection.execute("DELETE FROM memory_history")
 
 
-def create_memory(user_id: str, content: str, embedding: list[float]) -> Memory:
+def create_memory(user_id: str, content: str, embedding: list[float], source_role: str = "user") -> Memory:
     now = utc_now()
     return Memory(
         memory_id=str(uuid.uuid4()),
@@ -313,4 +319,5 @@ def create_memory(user_id: str, content: str, embedding: list[float]) -> Memory:
         created_at=now,
         last_accessed=now,
         updated_at=now,
+        source_role=source_role,
     )

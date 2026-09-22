@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,300;1,14..32,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3.6">
 </head>
 <body>
     <div id="app-container">
@@ -28,20 +28,20 @@
 
             <!-- Navigation -->
             <nav class="nav-tabs" role="tablist">
-                <button class="nav-tab active" data-view="chat" id="tab-chat">
+                <button class="nav-tab active" data-view="chat" id="tab-chat" onclick="window.ADAM.switchView('chat')">
                     <span class="tab-label">Chat & Pipeline</span>
                 </button>
-                <button class="nav-tab" data-view="dashboard" id="tab-dashboard">
+                <button class="nav-tab" data-view="dashboard" id="tab-dashboard" onclick="window.ADAM.switchView('dashboard')">
                     <span class="tab-label">Memory Dashboard</span>
                     <span class="badge-count" id="header-memory-count">0</span>
                 </button>
-                <button class="nav-tab" data-view="lifecycle" id="tab-lifecycle">
+                <button class="nav-tab" data-view="lifecycle" id="tab-lifecycle" onclick="window.ADAM.switchView('lifecycle')">
                     <span class="tab-label">Lifecycle Explorer</span>
                 </button>
-                <button class="nav-tab" data-view="consolidation" id="tab-consolidation">
+                <button class="nav-tab" data-view="consolidation" id="tab-consolidation" onclick="window.ADAM.switchView('consolidation')">
                     <span class="tab-label">Consolidation Audit</span>
                 </button>
-                <button class="nav-tab" data-view="metrics" id="tab-metrics">
+                <button class="nav-tab" data-view="metrics" id="tab-metrics" onclick="window.ADAM.switchView('metrics')">
                     <span class="tab-label">Research Metrics</span>
                 </button>
             </nav>
@@ -54,7 +54,7 @@
                     <span class="status-text" id="ollama-status-text">Checking...</span>
                 </div>
 
-                <button class="btn btn-outline-danger btn-sm" id="btn-reset-db" title="Clear all memories">
+                <button class="btn btn-outline-danger btn-sm" id="btn-reset-db" title="Clear all memories" onclick="window.ADAM.openResetModal()">
                     Reset DB
                 </button>
             </div>
@@ -135,9 +135,9 @@
 
                         <!-- Chat Input -->
                         <div class="chat-input-area">
-                            <form id="chat-form" class="chat-input-form" onsubmit="return false;">
+                            <form id="chat-form" class="chat-input-form">
                                 <textarea id="chat-textarea" placeholder="Type a message or fact to process through ADAM..." rows="2"></textarea>
-                                <button type="submit" id="btn-send-message" class="btn btn-primary btn-send">
+                                <button type="button" id="btn-send-message" class="btn btn-primary btn-send" onclick="window.ADAM.submitChat()">
                                     Send
                                 </button>
                             </form>
@@ -171,16 +171,18 @@
                 <div class="dashboard-header-bar">
                     <div class="dashboard-search-group">
                         <div class="search-input-box">
-                            <svg class="search-icon-svg" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M13.5 13.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            <svg class="search-icon-svg" width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:14px; height:14px; min-width:14px; max-width:14px; min-height:14px; max-height:14px;"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M13.5 13.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                             <input type="text" id="memory-search-input" placeholder="Search memories across tiers...">
                             <button id="btn-clear-search" class="btn-icon-sm" style="display:none;">×</button>
                         </div>
                         <select id="filter-tier" class="filter-select">
                             <option value="">All Tiers</option>
+                            <option value="ACTIVE_ONLY">Active Only (Exclude Superseded)</option>
                             <option value="WORKING">Working</option>
                             <option value="SHORT_TERM">Short-Term</option>
                             <option value="LONG_TERM">Long-Term</option>
                             <option value="ARCHIVE">Archive</option>
+                            <option value="SUPERSEDED">Superseded Memories</option>
                         </select>
                         <select id="filter-importance" class="filter-select">
                             <option value="">All Importance</option>
@@ -190,9 +192,9 @@
                         </select>
                     </div>
                     <div class="dashboard-actions">
-                        <button class="btn btn-secondary btn-sm" id="btn-refresh-memories">Refresh</button>
-                        <button class="btn btn-primary btn-sm" id="btn-add-memory-manual">+ New Memory</button>
-                        <button class="btn btn-outline-danger btn-sm" id="btn-empty-db-dashboard">Empty Database</button>
+                        <button class="btn btn-secondary btn-sm" id="btn-refresh-memories" onclick="window.ADAM.refreshMemories()">Refresh</button>
+                        <button class="btn btn-primary btn-sm" id="btn-add-memory-manual" onclick="window.ADAM.openAddMemoryModal()">+ New Memory</button>
+                        <button class="btn btn-outline-danger btn-sm" id="btn-empty-db-dashboard" onclick="window.ADAM.openResetModal()">Empty Database</button>
                     </div>
                 </div>
 
@@ -587,13 +589,13 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="window.ADAM.closeModals()">Cancel</button>
-                <button class="btn btn-danger" id="btn-confirm-reset">Yes, Clear All Data</button>
+                <button class="btn btn-danger" id="btn-confirm-reset" onclick="window.ADAM.handleDatabaseReset()">Yes, Clear All Data</button>
             </div>
         </div>
     </div>
 
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=3.6"></script>
 </body>
 </html>

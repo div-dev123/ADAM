@@ -386,7 +386,7 @@ body {
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
-    padding: 24px 24px;
+    padding: 24px 24px 48px 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -529,6 +529,7 @@ body {
 .badge-duplicate      { background: rgba(255,255,255,0.04); color: var(--text-4); border-color: var(--border); }
 .badge-related        { background: var(--c-long-bg);    color: var(--c-long);    border-color: rgba(124,107,170,0.2); }
 .badge-contradictory  { background: rgba(160,80,96,0.08); color: var(--c-danger); border-color: rgba(160,80,96,0.2); }
+.badge-superseded     { background: rgba(244,63,94,0.12); color: #fb7185; border-color: rgba(244,63,94,0.3); font-weight: 600; }
 .badge-compression    { background: var(--c-archive-bg); color: var(--c-archive); border-color: rgba(160,125,62,0.2);  }
 .badge-info           { background: rgba(255,255,255,0.05); color: var(--text-3); border-color: var(--border); }
 .badge-success        { background: var(--c-short-bg); color: var(--c-short); border-color: rgba(82,153,122,0.2); }
@@ -693,15 +694,21 @@ kbd {
 
 .search-input-box { position: relative; flex: 1; max-width: 320px; }
 
-.search-icon-svg {
+.search-icon-svg,
+svg.search-icon-svg {
     position: absolute;
     left: 10px;
     top: 50%;
     transform: translateY(-50%);
-    width: 14px;
-    height: 14px;
+    width: 14px !important;
+    height: 14px !important;
+    max-width: 14px !important;
+    max-height: 14px !important;
+    min-width: 14px !important;
+    min-height: 14px !important;
     color: var(--text-4);
     pointer-events: none;
+    display: block;
 }
 
 .search-input-box input {
@@ -813,6 +820,38 @@ kbd {
     transition: border-color 0.15s, transform 0.15s;
 }
 .memory-card:hover { border-color: var(--border-md); transform: translateY(-1px); }
+.memory-card-superseded {
+    opacity: 0.72;
+    border: 1px dashed rgba(244, 63, 94, 0.4);
+    background: rgba(30, 15, 20, 0.4);
+}
+.memory-card-superseded:hover {
+    opacity: 1;
+    border-color: #fb7185;
+}
+.memory-card-superseded .memory-card-content {
+    text-decoration: line-through;
+    color: var(--text-4);
+}
+.superseded-notice {
+    font-size: 11px;
+    color: #fb7185;
+    background: rgba(244, 63, 94, 0.08);
+    padding: 4px 7px;
+    border-radius: var(--r-xs);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+}
+.superseded-notice code {
+    color: #38bdf8;
+    background: rgba(0,0,0,0.3);
+    padding: 1px 4px;
+    border-radius: 2px;
+    cursor: pointer;
+}
 
 .memory-card-header { display: flex; justify-content: space-between; align-items: center; }
 .memory-card-content { font-size: 12px; color: var(--text-2); line-height: 1.5; word-break: break-word; }

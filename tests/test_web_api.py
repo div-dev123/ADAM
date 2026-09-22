@@ -194,7 +194,7 @@ def test_static_index_and_assets_serving(tmp_path):
     root_resp = client.get("/")
     assert root_resp.status_code == 200
     assert "ADAM" in root_resp.text
-    assert "Adaptive Dynamic AI Memory" in root_resp.text
+    assert "Adaptive Memory Management" in root_resp.text
 
     # Test static assets
     css_resp = client.get("/static/css/styles.css")
@@ -405,6 +405,48 @@ def test_safe_contradiction_preserves_both_memories_and_marks_superseded(tmp_pat
     # Both memories preserved in database
     assert service.storage.count() == 2
 
+    # Check that audit history exists on old memory with proper old and new content
+    old_hist = service.storage.get_history(old_mem.memory_id)
+    assert len(old_hist) >= 1
+    assert old_hist[0]["operation"] == "CONTRADICTORY"
+    assert old_hist[0]["old_content"] == "I use Python for analysis."
+    assert old_hist[0]["new_content"] == "I now use Rust exclusively."
+    assert f"Superseded by memory {new_mem.memory_id}" in old_hist[0]["reason"]
+
+    # Check that audit history also exists on new superseding memory
+    new_hist = service.storage.get_history(new_mem.memory_id)
+    assert len(new_hist) >= 1
+    assert new_hist[0]["operation"] == "CONTRADICTORY"
+    assert new_hist[0]["old_content"] == "I use Python for analysis."
+    assert new_hist[0]["new_content"] == "I now use Rust exclusively."
+    assert f"Supersedes prior memory {old_mem.memory_id}" in new_hist[0]["reason"]
 
 
+def test_near_identical_query_consolidates_as_duplicate(tmp_path):
+    from tests.test_phase1 import build_phase3_service
 
+    # LLM that should NOT be called because heuristic duplicate catches it
+    class StrictLLM:
+        def classify_memory(self, new_content, candidates):
+            raise AssertionError("LLM should not be called for near-identical duplicate query!")
+
+    service, _ = build_phase3_service(tmp_path, [])
+    service.consolidation.llm = StrictLLM()
+
+    # Query 1
+    q1 = "I am going to do a project called ADAM (Adaptive Dynamic Agent Memory) which tells the agent what to store how to store and how to retrieve , this will help in context window optimisation"
+    m1 = service.store_memory("user-adam", q1)
+    assert m1 is not None
+    assert service.storage.count() == 1
+
+    # Query 2 (identical except a minor trailing addition, cosine similarity 1.0 with fake embeddings, and word overlap > 85%)
+    q2 = "I am going to do a project called ADAM (Adaptive Dynamic Agent Memory) which tells the agent what to store how to store and how to retrieve , this will help in context window optimisation, which will help to save cost"
+    trace = service.store_memory_with_trace("user-adam", q2)
+
+    assert trace["action"] == "DUPLICATE"
+    assert "vocabulary overlap" in trace["decision_reason"] or "Heuristic" in trace["decision_reason"]
+    # No duplicate row created
+    assert service.storage.count() == 1
+    # Check that the memory content was updated to the richer/longer version
+    updated_m = service.storage.get_memory(m1.memory_id)
+    assert "which will help to save cost" in updated_m.content

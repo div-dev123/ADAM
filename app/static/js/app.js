@@ -157,6 +157,11 @@
         if (elements.chatMessages) {
             requestAnimationFrame(() => {
                 elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+                setTimeout(() => {
+                    if (elements.chatMessages) {
+                        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+                    }
+                }, 80);
             });
         }
     }
@@ -274,17 +279,22 @@
     }
 
     async function handleChatSubmit() {
-        const message = elements.chatTextarea.value.trim();
-        if (!message || state.isProcessing) return;
+        const message = elements.chatTextarea ? elements.chatTextarea.value.trim() : '';
+        if (!message) {
+            showToast('Please type a message first.', 'info');
+            if (elements.chatTextarea) elements.chatTextarea.focus();
+            return;
+        }
+        if (state.isProcessing) return;
 
         state.isProcessing = true;
-        elements.btnSendMessage.disabled = true;
-        elements.chatTextarea.value = '';
+        if (elements.btnSendMessage) elements.btnSendMessage.disabled = true;
+        if (elements.chatTextarea) elements.chatTextarea.value = '';
         state.turnCount += 1;
         const currentTurn = state.turnCount;
 
         const startTime = performance.now();
-        elements.pipelineOverallStatus.textContent = 'Running Memory Write & Retrieval Pipeline...';
+        if (elements.pipelineOverallStatus) elements.pipelineOverallStatus.textContent = 'Running Memory Write & Retrieval Pipeline...';
         setPipelineSteps('extract', []);
 
         // Append Temporary User Message to UI
@@ -418,6 +428,13 @@
                                 <div style="color: #64748b; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(s.reason || '')}">${escapeHtml(s.reason || '')}</div>
                             </div>
                         `).join('')}
+                    </div>
+                ` : ''}
+
+                ${userMemory.action === 'CONTRADICTORY' ? `
+                    <div style="background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.3); border-radius: 4px; padding: 0.4rem 0.6rem; margin-bottom: 0.5rem; font-size: 0.78rem; color: #fb7185; display: flex; align-items: center; gap: 6px;">
+                        <span>⚡</span>
+                        <span><strong>Contradiction Detected:</strong> Prior conflicting memory superseded by this statement.</span>
                     </div>
                 ` : ''}
 
@@ -584,17 +601,25 @@
 
         try {
             let url = `/memories?user_id=${encodeURIComponent(state.userId)}`;
-            if (tier) url += `&tier=${encodeURIComponent(tier)}`;
+            if (tier && tier !== 'ACTIVE_ONLY' && tier !== 'SUPERSEDED') {
+                url += `&tier=${encodeURIComponent(tier)}`;
+            }
             if (query) url += `&search=${encodeURIComponent(query)}`;
 
             const memories = await apiRequest(url);
             state.memories = memories;
 
-            // Apply client importance filter if set
+            // Apply client filters
             let filtered = memories;
-            if (impFilter === 'high') filtered = memories.filter(m => m.importance_score >= 0.70);
-            if (impFilter === 'medium') filtered = memories.filter(m => m.importance_score > 0.30 && m.importance_score < 0.70);
-            if (impFilter === 'low') filtered = memories.filter(m => m.importance_score <= 0.30);
+            if (tier === 'ACTIVE_ONLY') {
+                filtered = filtered.filter(m => !m.superseded_by);
+            } else if (tier === 'SUPERSEDED') {
+                filtered = filtered.filter(m => Boolean(m.superseded_by));
+            }
+
+            if (impFilter === 'high') filtered = filtered.filter(m => m.importance_score >= 0.70);
+            if (impFilter === 'medium') filtered = filtered.filter(m => m.importance_score > 0.30 && m.importance_score < 0.70);
+            if (impFilter === 'low') filtered = filtered.filter(m => m.importance_score <= 0.30);
 
             renderMemoryDashboard(filtered);
             elements.headerMemoryCount.textContent = memories.length;
@@ -614,9 +639,14 @@
         };
 
         memories.forEach(m => {
-            const t = (m.tier || 'WORKING').toUpperCase();
+            const isSuperseded = Boolean(m.superseded_by);
+            let t = (m.tier || 'WORKING').toUpperCase();
+            // Superseded memories are retired to Archive so active tiers only show live knowledge
+            if (isSuperseded) {
+                t = 'ARCHIVE';
+            }
             if (grouped[t]) grouped[t].push(m);
-            else grouped.WORKING.push(m);
+            else grouped.ARCHIVE.push(m);
         });
 
         // Update counts and render cards in each column
@@ -638,16 +668,27 @@
 
     function createMemoryCardHtml(memory) {
         const impCat = getImportanceCategory(memory.importance_score);
-        const tierBadge = getTierBadge(memory.tier);
         const compLevel = memory.compression_level || 0;
+        const isSuperseded = Boolean(memory.superseded_by);
 
         return `
-            <div class="memory-card" onclick="window.ADAM.inspectMemory('${memory.memory_id}')">
+            <div class="memory-card ${isSuperseded ? 'memory-card-superseded' : ''}" onclick="window.ADAM.inspectMemory('${memory.memory_id}')">
                 <div class="memory-card-header">
                     <span class="badge ${impCat.class}">Imp: ${memory.importance_score.toFixed(2)} (${impCat.label})</span>
-                    ${compLevel > 0 ? `<span class="badge badge-compression">L${compLevel}</span>` : ''}
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        ${isSuperseded ? `<span class="badge badge-superseded" title="Superseded by memory #${memory.superseded_by.substring(0,8)}">Superseded</span>` : ''}
+                        ${compLevel > 0 ? `<span class="badge badge-compression">L${compLevel}</span>` : ''}
+                    </div>
                 </div>
                 <div class="memory-card-content">${escapeHtml(memory.content)}</div>
+                ${isSuperseded ? `
+                    <div class="superseded-notice" onclick="event.stopPropagation()">
+                        <span>Superseded by:</span>
+                        <code title="Inspect superseding memory" onclick="window.ADAM.inspectMemory('${memory.superseded_by}')">
+                            #${memory.superseded_by.substring(0, 8)}...
+                        </code>
+                    </div>
+                ` : ''}
                 <div class="memory-card-meta">
                     <div class="importance-meter" title="Importance: ${memory.importance_score.toFixed(2)}">
                         <div class="importance-meter-track">
@@ -679,7 +720,7 @@
                 <option value="">-- Select a Memory (${memories.length} Available) --</option>
                 ${memories.map(m => `
                     <option value="${m.memory_id}" ${state.selectedMemoryId === m.memory_id ? 'selected' : ''}>
-                        [${m.tier}] ${escapeHtml(m.content.substring(0, 60))}... (Imp: ${m.importance_score.toFixed(2)})
+                        ${m.superseded_by ? '[SUPERSEDED] ' : ''}[${m.tier}] ${escapeHtml(m.content.substring(0, 50))}... (Imp: ${m.importance_score.toFixed(2)})
                     </option>
                 `).join('')}
             `;
@@ -707,19 +748,30 @@
             const historyData = await apiRequest(`/memory/${memoryId}/history`);
             const memory = await apiRequest(`/memory/${memoryId}`);
             const historyList = historyData.history || [];
+            const isSuperseded = Boolean(memory.superseded_by);
 
             elements.tracerTimelineContainer.innerHTML = `
                 <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 1rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                        <span class="badge ${getTierBadge(memory.tier).class}">Current Tier: ${memory.tier}</span>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <span class="badge ${getTierBadge(memory.tier).class}">Current Tier: ${memory.tier}</span>
+                            ${isSuperseded ? `<span class="badge badge-superseded">Superseded</span>` : ''}
+                        </div>
                         <span class="badge ${getImportanceCategory(memory.importance_score).class}">Importance: ${memory.importance_score.toFixed(2)}</span>
                     </div>
-                    <div style="font-size:0.9rem; font-weight:600; color:#f8fafc; margin-bottom:0.35rem;">
+                    <div style="font-size:0.9rem; font-weight:600; color:#f8fafc; margin-bottom:0.35rem; ${isSuperseded ? 'text-decoration:line-through; opacity:0.75;' : ''}">
                         ${escapeHtml(memory.content)}
                     </div>
                     <div style="font-size:0.75rem; color:var(--text-muted);">
                         ID: <code style="color:#a5b4fc;">${memory.memory_id}</code> • Created: ${formatDate(memory.created_at)} • Access Count: <strong>${memory.access_count}</strong>
                     </div>
+                    ${isSuperseded ? `
+                        <div class="superseded-notice" style="margin-top:0.6rem; padding:6px 10px;">
+                            <span>⚠️ <strong>Superseded:</strong> Replaced by memory</span>
+                            <code onclick="window.ADAM.inspectMemory('${memory.superseded_by}')">#${memory.superseded_by.substring(0,8)}...</code>
+                            <button class="btn-card-action" style="margin-left:auto;" onclick="window.ADAM.inspectMemory('${memory.superseded_by}')">Inspect Replacement &rarr;</button>
+                        </div>
+                    ` : ''}
                 </div>
 
                 <div class="details-section-title" style="margin-bottom:0.85rem;">Audit & Transition History (${historyList.length} Events)</div>
@@ -732,10 +784,10 @@
                         <div style="font-size:0.8rem; color:#cbd5e1; margin-top:0.25rem;">
                             <strong>Reason:</strong> ${escapeHtml(h.reason || 'Lifecycle operation')}
                         </div>
-                        ${h.old_content && h.old_content !== h.new_content ? `
-                            <div class="timeline-event-diff">
-                                <div class="diff-old">- Previous: ${escapeHtml(h.old_content)}</div>
-                                <div class="diff-new">+ Updated: ${escapeHtml(h.new_content)}</div>
+                        ${h.old_content ? `
+                            <div class="timeline-event-diff" style="margin-top:0.4rem;">
+                                <div class="diff-old"><strong>- Prior:</strong> ${escapeHtml(h.old_content)}</div>
+                                <div class="diff-new"><strong>+ New:</strong> ${escapeHtml(h.new_content)}</div>
                             </div>
                         ` : ''}
                     </div>
@@ -768,18 +820,21 @@
                 <div class="audit-item-card">
                     <div class="audit-item-header">
                         <span class="badge ${getActionBadge(item.operation).class}">${item.operation}</span>
-                        <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">${formatDate(item.created_at)}</span>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">${formatDate(item.created_at)}</span>
+                            <button class="btn-card-action" onclick="window.ADAM.inspectMemory('${item.memory_id}')">Inspect #${item.memory_id.substring(0,6)}</button>
+                        </div>
                     </div>
-                    <div style="font-size:0.84rem; color:var(--text-primary);">
+                    <div style="font-size:0.84rem; color:var(--text-primary); margin-top:0.25rem;">
                         <strong>Reason:</strong> ${escapeHtml(item.reason || 'Memory consolidation rule')}
                     </div>
                     ${item.old_content ? `
-                        <div class="timeline-event-diff">
-                            <div class="diff-old">- Prior: ${escapeHtml(item.old_content)}</div>
-                            <div class="diff-new">+ New: ${escapeHtml(item.new_content)}</div>
+                        <div class="timeline-event-diff" style="margin-top:0.4rem;">
+                            <div class="diff-old"><strong>- Prior:</strong> ${escapeHtml(item.old_content)}</div>
+                            <div class="diff-new"><strong>+ New:</strong> ${escapeHtml(item.new_content)}</div>
                         </div>
                     ` : `
-                        <div style="font-size:0.78rem; font-family:var(--font-mono); color:#94a3b8; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:var(--radius-sm);">
+                        <div style="font-size:0.78rem; font-family:var(--font-mono); color:#94a3b8; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:var(--radius-sm); margin-top:0.35rem;">
                             Memory: ${escapeHtml(item.new_content || '')}
                         </div>
                     `}
@@ -909,28 +964,68 @@
         }
     }
 
+    let initialChatHtml = '';
+
+    function resetChatMessagesUI() {
+        if (elements.chatMessages && initialChatHtml) {
+            elements.chatMessages.innerHTML = initialChatHtml;
+        }
+        if (elements.chatTurnTiming) elements.chatTurnTiming.textContent = '';
+        if (elements.pipelineOverallStatus) elements.pipelineOverallStatus.textContent = 'Idle — Awaiting input';
+        setPipelineSteps(null, []);
+        const inspector = document.getElementById('turn-inspector-content');
+        if (inspector) {
+            inspector.innerHTML = `
+                <div class="empty-state-card">
+                    <div class="empty-icon-line"></div>
+                    <p>Send a message to view real-time memory extraction, candidate consolidation decisions, and context retrieval scores.</p>
+                </div>
+            `;
+        }
+        const turnIdBadge = document.getElementById('trace-turn-id');
+        if (turnIdBadge) turnIdBadge.textContent = 'Turn #0';
+    }
+
+    function openResetModal() {
+        if (elements.modalResetConfirm) {
+            elements.modalResetConfirm.style.display = 'flex';
+        } else if (confirm('Are you sure you want to completely clear the local SQLite database?')) {
+            handleDatabaseReset();
+        }
+    }
+
+    function openAddMemoryModal() {
+        if (elements.manualMemoryUser) elements.manualMemoryUser.value = state.userId;
+        if (elements.modalAddMemory) elements.modalAddMemory.style.display = 'flex';
+    }
+
+    function closeModals() {
+        if (elements.modalAddMemory) elements.modalAddMemory.style.display = 'none';
+        if (elements.modalMemoryDetails) elements.modalMemoryDetails.style.display = 'none';
+        if (elements.modalTierTransition) elements.modalTierTransition.style.display = 'none';
+        if (elements.modalResetConfirm) elements.modalResetConfirm.style.display = 'none';
+    }
+
     async function handleDatabaseReset() {
         try {
+            if (elements.btnConfirmReset) elements.btnConfirmReset.disabled = true;
             await apiRequest('/reset', {
                 method: 'POST',
                 body: JSON.stringify({ confirm: true }),
             });
             showToast('Research database emptied and refreshed!', 'success');
             closeModals();
+            state.chatHistory = [];
+            state.turnCount = 0;
             loadMemories();
             loadMetrics();
             checkSystemStatus();
-            elements.chatMessages.innerHTML = '';
+            resetChatMessagesUI();
         } catch (error) {
             showToast(`Reset failed: ${error.message}`, 'danger');
+        } finally {
+            if (elements.btnConfirmReset) elements.btnConfirmReset.disabled = false;
         }
-    }
-
-    function closeModals() {
-        elements.modalAddMemory.style.display = 'none';
-        elements.modalMemoryDetails.style.display = 'none';
-        elements.modalTierTransition.style.display = 'none';
-        elements.modalResetConfirm.style.display = 'none';
     }
 
     function toggleDetails(drawerId) {
@@ -976,18 +1071,29 @@
             });
         }
 
-        // Chat Form
-        elements.chatForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleChatSubmit();
-        });
-
-        elements.chatTextarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+        // Chat Form & Send Button
+        if (elements.btnSendMessage) {
+            elements.btnSendMessage.addEventListener('click', (e) => {
                 e.preventDefault();
                 handleChatSubmit();
-            }
-        });
+            });
+        }
+
+        if (elements.chatForm) {
+            elements.chatForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleChatSubmit();
+            });
+        }
+
+        if (elements.chatTextarea) {
+            elements.chatTextarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleChatSubmit();
+                }
+            });
+        }
 
         // Dashboard Controls
         if (elements.memorySearchInput) {
@@ -1012,8 +1118,7 @@
 
         if (elements.btnAddMemoryManual) {
             elements.btnAddMemoryManual.addEventListener('click', () => {
-                elements.manualMemoryUser.value = state.userId;
-                elements.modalAddMemory.style.display = 'flex';
+                openAddMemoryModal();
             });
         }
         if (elements.btnSubmitManualMemory) elements.btnSubmitManualMemory.addEventListener('click', handleManualMemorySubmit);
@@ -1021,7 +1126,7 @@
         // Empty Database button on Dashboard
         if (elements.btnEmptyDbDashboard) {
             elements.btnEmptyDbDashboard.addEventListener('click', () => {
-                elements.modalResetConfirm.style.display = 'flex';
+                openResetModal();
             });
         }
 
@@ -1042,7 +1147,7 @@
         // Reset Database Modal from Header
         if (elements.btnResetDb) {
             elements.btnResetDb.addEventListener('click', () => {
-                elements.modalResetConfirm.style.display = 'flex';
+                openResetModal();
             });
         }
         if (elements.btnConfirmReset) elements.btnConfirmReset.addEventListener('click', handleDatabaseReset);
@@ -1056,6 +1161,13 @@
     // Expose global methods for inline HTML onclick handlers
     window.ADAM = {
         closeModals,
+        openResetModal,
+        openAddMemoryModal,
+        handleDatabaseReset,
+        submitChat: handleChatSubmit,
+        refreshMemories: () => { loadMemories(); showToast('Memory dashboard refreshed', 'info'); },
+        switchView,
+        loadConsolidationFeed,
         toggleDetails,
         sendSample,
         inspectMemory,
@@ -1065,6 +1177,9 @@
 
     // Initialize application on DOM load
     document.addEventListener('DOMContentLoaded', () => {
+        if (elements.chatMessages) {
+            initialChatHtml = elements.chatMessages.innerHTML;
+        }
         initEvents();
         checkSystemStatus();
         loadMemories();

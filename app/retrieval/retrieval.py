@@ -93,9 +93,11 @@ class RetrievalService:
             "score_breakdown": score_breakdown.get("signals", {}),
         }
 
-    def search(self, user_id: str, query: str, top_k: int):
+    def search(self, user_id: str, query: str, top_k: int, include_superseded: bool = False):
         query_embedding = self.embeddings.encode(query)
         memories = self.storage.get_memories(user_id)
+        if not include_superseded:
+            memories = [m for m in memories if not m.superseded_by]
         ranked = sorted(
             (
                 (cosine_similarity(query_embedding, memory.embedding), memory)
