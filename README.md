@@ -14,6 +14,7 @@ ADAM addresses this by decoupling **intrinsic factual value** (heuristic importa
 - **Intelligent Noise & Filler Filtering**: Filters greetings, acknowledgments, small-talk, and LLM boilerplate phrases before they can pollute vector storage.
 - **Auditable Lifecycle & Transitions**: Every consolidation, merge, contradiction, and compression event writes an immutable audit record to SQLite with before/after diffs and reasoning.
 - **Selective Forgetting & Automatic Memory Lifecycle (Phase 4)**: Mathematical retention scoring based on Ebbinghaus exponential decay, access recurrence, and intrinsic importance. Safely transitions tiers and prunes obsolete, low-value memories with strict anti-amnesia guarantees and permanent audit logging.
+- **Adaptive Retrieval & Query Drift Detection (Phase 5)**: Compares current query with conversation context using semantic distance ($1 - \text{cosine similarity}$) and temporal staleness. Dynamically selects memory scope tiers (Low drift $\to$ `WORKING` + `SHORT_TERM`; Medium drift $\to$ includes `LONG_TERM`; High drift $\to$ broadens across all tiers including `ARCHIVE`) with rich telemetry and configurable thresholds.
 - **Two-Level Compression Engine**: Compresses aging memories (`WORKING` $\to$ `LONG_TERM` at Level 1; `SHORT_TERM` $\to$ `ARCHIVE` at Level 2) to preserve facts while reducing token overhead.
 - **Offline & Graceful Degradation**: Functions standalone with local embeddings (`sentence-transformers/all-MiniLM-L6-v2`) and SQLite. If the local Ollama LLM (`qwen2.5:3b`) is offline or busy, the system gracefully falls back to deterministic heuristics.
 - **Interactive Research Web Interface**: Built-in 5-view single-page application (SPA) with real-time pipeline visualization, Kanban memory dashboard, state machine explorer, audit feed, and system metrics.
@@ -22,7 +23,7 @@ ADAM addresses this by decoupling **intrinsic factual value** (heuristic importa
 
 ## Architecture & Pipelines
 
-ADAM operates across two primary pipelines: a dual-turn **Write Path** and a semantic **Read Path**.
+ADAM operates across two primary pipelines: a dual-turn **Write Path** and an adaptive **Read Path**.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -57,9 +58,24 @@ ADAM operates across two primary pipelines: a dual-turn **Write Path** and a sem
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                           ADAM HYBRID READ PATH                                  │
+│                       ADAM ADAPTIVE READ PATH (PHASE 5)                          │
 │                                                                                  │
-│   User Query                                                                     │
+│   User Query + Conversation Context (Chat History / Recent Turns)                │
+│         │                                                                        │
+│         ▼                                                                        │
+│   [Query Drift Detector]                                                         │
+│     ├── Semantic Distance = 1.0 - CosineSimilarity(Query, Context)               │
+│     ├── Temporal Staleness Factor = 1.0 - exp(-0.6931 * Δt / half_life)          │
+│     └── Drift Score = (1 - w_time) * SemDist + w_time * TimeFactor               │
+│         │                                                                        │
+│         ▼                                                                        │
+│   [Adaptive Scope Selection]                                                     │
+│     ├── LOW Drift (< 0.55)      ──► [WORKING, SHORT_TERM] (Focused)              │
+│     ├── MEDIUM Drift (0.55-0.85)──► [WORKING, SHORT_TERM, LONG_TERM] (Expanded)  │
+│     └── HIGH Drift (≥ 0.85)     ──► [WORKING, SHORT_TERM, LONG_TERM, ARCHIVE]    │
+│         │                                                                        │
+│         ▼                                                                        │
+│   [Tier-Filtered Candidate Retrieval]                                            │
 │         │                                                                        │
 │         ├───────────────────────────────────┬────────────────────────────────────┤
 │         ▼                                   ▼                                    │
@@ -76,7 +92,8 @@ ADAM operates across two primary pipelines: a dual-turn **Write Path** and a sem
 │               Score = Σ 1 / (60 + Rank_m)                                        │
 │                             │                                                    │
 │                             ▼                                                    │
-│               [Unified Top-K Memory Ranking]                                     │
+│               [Unified Top-K Memory Ranking & Access Tracking]                   │
+│               Enrich metadata: similarity, tier, importance, drift telemetry     │
 │               Increment access_count, update last_accessed                       │
 │                             │                                                    │
 │                             ▼                                                    │
@@ -274,6 +291,67 @@ $$S_{\text{forget}}(m) = 1.0 - R(m)$$
    - Memories with $I(m) \ge 0.70$ (high importance) or $\text{access\_count} \ge 3$ (frequent access) are **strictly protected** against automatic forgetting.
 4. **Permanent Audit Trail**:
    - Deletion is completely auditable: when forgotten, ADAM logs `operation="FORGOTTEN"` to `memory_history` with the full content snapshot, mathematical reasoning, and timestamp. Audit history is never deleted.
+
+---
+
+### 6. Adaptive Retrieval & Query Drift Detection (Phase 5)
+
+In dynamic multi-turn interactions, user topics evolve, drift, or abruptly pivot. Traditional retrieval architectures either:
+- **Over-restrict scope**: Limiting retrieval only to working memory causes the agent to miss relevant background decisions or historical preferences when discussing older topics.
+- **Over-expand scope**: Searching across every tier (including archives and old superseded notes) pollutes context with obsolete or irrelevant candidates, confusing the LLM and diluting attention.
+
+ADAM solves this through **Query Drift Detection**: dynamically analyzing semantic distance and temporal staleness between the incoming query and recent conversational context to select the optimal memory scope.
+
+```
+Incoming Query + Conversation Context (Chat History / Recent Turns)
+                              │
+                              ▼
+                 [Query Drift Detector]
+       Semantic Distance: D_sem = 1.0 - CosineSimilarity(q, c)
+       Temporal Staleness: F_time = 1.0 - exp(-0.6931 * Δt / t_half)
+       Drift Score: S_drift = (1 - w_time) * D_sem + w_time * F_time
+                              │
+             ┌────────────────┼────────────────┐
+             ▼                ▼                ▼
+     S_drift < 0.55    0.55 ≤ S_drift < 0.85   S_drift ≥ 0.85
+       [LOW DRIFT]       [MEDIUM DRIFT]        [HIGH DRIFT]
+             │                │                │
+             ▼                ▼                ▼
+    Focused Scope:     Expanded Scope:       Broad Scope:
+    WORKING,           WORKING,              WORKING,
+    SHORT_TERM         SHORT_TERM,           SHORT_TERM,
+                       LONG_TERM             LONG_TERM,
+                                             ARCHIVE
+```
+
+#### Mathematical Drift Formulation:
+1. **Semantic Topic Distance**:
+   $$D_{\text{sem}}(q, c) = \max\left(0.0, \, \min\left(1.0, \, 1.0 - \text{CosineSimilarity}(\vec{e}_q, \vec{e}_c)\right)\right)$$
+   Where $\vec{e}_q$ is the query embedding and $\vec{e}_c$ is the aggregated embedding of recent conversational context.
+
+2. **Temporal Staleness Factor**:
+   When conversation turns are separated by significant time gaps $\Delta t$, context relevance decays:
+   $$F_{\text{time}}(\Delta t) = 1.0 - \exp\left(-\frac{\ln(2) \cdot \Delta t}{t_{\text{half-life}}}\right)$$
+   Where $t_{\text{half-life}}$ defaults to 1.0 hour.
+
+3. **Composite Drift Score**:
+   $$S_{\text{drift}} = (1.0 - w_{\text{time}}) \cdot D_{\text{sem}} + w_{\text{time}} \cdot F_{\text{time}}$$
+   (Default temporal weight $w_{\text{time}} = 0.20$).
+
+#### Adaptive Scope Selection Policy:
+* **LOW Drift ($S_{\text{drift}} < 0.55$)**: The query is strongly aligned with current discussion. Retrieval is focused strictly on active tiers: `[WORKING, SHORT_TERM]`.
+* **MEDIUM Drift ($0.55 \le S_{\text{drift}} < 0.85$)**: Topic evolution detected (e.g. pivoting from code endpoints to cloud infrastructure and databases). Retrieval expands to include `[WORKING, SHORT_TERM, LONG_TERM]`.
+* **HIGH Drift ($S_{\text{drift}} \ge 0.85$)**: Radical subject change (e.g. pivoting from async Python controllers to restaurants or personal trivia). Retrieval broadens across all tiers: `[WORKING, SHORT_TERM, LONG_TERM, ARCHIVE]`.
+* **Unconditioned / Cold-Start Queries**: When no prior context exists (e.g. first turn of a conversation), drift defaults to $0.0$ (`LOW`) with default focused scope `[WORKING, SHORT_TERM]`.
+
+#### Rich Telemetry & Access Tracking:
+Every retrieved memory is returned with comprehensive telemetry:
+- `similarity`: Hybrid/dense similarity score
+- `memory_tier`: Storage tier of origin
+- `importance`: Intrinsic heuristic importance score
+- `drift_level`: Detected drift category (`LOW`, `MEDIUM`, `HIGH`)
+- `scope_selection_reason`: Transparent human-readable explanation of why the scope was chosen
+- Every retrieved memory updates its `access_count` and `last_accessed` timestamp, preserving frequently utilized facts across the lifecycle.
 
 ---
 
@@ -623,6 +701,29 @@ ADAM Evaluation:
     -> Action: PROTECT. Anti-amnesia protection guards critical fact from deletion.
 ```
 
+### Scenario 6: Adaptive Retrieval & Query Drift (Phase 5)
+```text
+Context: "We are developing an AI agent using FastAPI and Python backend."
+
+Case A (Low Drift - Query: "Which web framework am I using?"):
+  - Semantic Distance: 0.48 < 0.55
+  - Drift Level: LOW
+  - Scope: [WORKING, SHORT_TERM] (Focused)
+  - Telemetry: Returns working memory with explanation "Low query drift; topic strongly aligns with recent context."
+
+Case B (Medium Drift - Query: "Where are we deploying Docker containers and PostgreSQL?"):
+  - Semantic Distance: 0.76 (0.55 <= Drift < 0.85)
+  - Drift Level: MEDIUM
+  - Scope: [WORKING, SHORT_TERM, LONG_TERM] (Expanded)
+  - Telemetry: Reaches architectural decisions in LONG_TERM; keeps ARCHIVE out of scope.
+
+Case C (High Drift - Query: "What was the name of Luigi's pizza restaurant downtown?"):
+  - Semantic Distance: 1.0 >= 0.85
+  - Drift Level: HIGH
+  - Scope: [WORKING, SHORT_TERM, LONG_TERM, ARCHIVE] (Broadened)
+  - Telemetry: Broadens across all tiers, retrieving archived personal note without failing recall.
+```
+
 ---
 
 ## Directory Structure
@@ -631,7 +732,7 @@ ADAM Evaluation:
 adam_memory/
 ├── app/
 │   ├── main.py                     # FastAPI application, lifespan, endpoints, static mounts
-│   ├── config.py                   # Environment-backed settings, scoring weights, thresholds
+│   ├── config.py                   # Environment-backed settings, scoring weights, drift thresholds
 │   ├── llm/
 │   │   ├── __init__.py
 │   │   └── client.py               # LLMClient interface, OllamaClient (JSON mode), Pydantic schemas
@@ -646,6 +747,7 @@ adam_memory/
 │   │   └── compression.py          # Level 1 & Level 2 lifecycle compression transitions
 │   ├── retrieval/
 │   │   ├── __init__.py
+│   │   ├── drift.py                # Phase 5 QueryDriftDetector, semantic distance + temporal decay, scope mappings
 │   │   ├── bm25.py                 # Self-contained Okapi BM25 index & tokenizer
 │   │   ├── hybrid.py               # HybridSearchService & Reciprocal Rank Fusion (RRF)
 │   │   ├── embeddings.py           # SentenceTransformer (all-MiniLM-L6-v2) embedding service
@@ -660,8 +762,9 @@ adam_memory/
 ├── data/
 │   └── adam.db                     # Local SQLite database (created on first run)
 ├── tests/
-│   ├── test_lifecycle.py           # 9 unit tests for forgetting policy, tier transitions, protection & API
-│   ├── test_hybrid_search.py       # 9 tests for BM25, RRF, hybrid modes & empirical benchmark
+│   ├── test_adaptive_retrieval.py  # 8 tests for drift detection, adaptive scopes, telemetry & API (Phase 5)
+│   ├── test_lifecycle.py           # 9 unit tests for forgetting policy, tier transitions, protection & API (Phase 4)
+│   ├── test_hybrid_search.py       # 9 tests for BM25, RRF, hybrid modes & empirical benchmark (Phase 3)
 │   ├── test_phase1.py              # 18 unit tests for core memory, tiers, scoring, consolidation
 │   └── test_web_api.py             # 15 tests for web API, chat pipeline, role isolation, heuristics
 ├── requirements.txt                # Python dependencies
