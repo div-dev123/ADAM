@@ -8,6 +8,7 @@ from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights, 
 from app.memory.storage import SQLiteStorage, create_memory
 from app.memory.tiers import TierAssigner
 from app.retrieval.embeddings import EmbeddingService
+from app.retrieval.hybrid import HybridSearchService
 from app.retrieval.similarity import cosine_similarity
 
 
@@ -22,12 +23,23 @@ class RetrievalService:
         llm=None,
         consolidation_config: Optional[ConsolidationConfig] = None,
         compression_config=None,
+        search_mode: str = "hybrid",
+        rrf_k: int = 60,
+        bm25_k1: float = 1.5,
+        bm25_b: float = 0.75,
     ):
         self.storage = storage
         self.embeddings = embeddings
         self.llm = llm
         self.scorer = scorer or HeuristicImportanceScorer(ImportanceWeights())
         self.tier_assigner = lifecycle_policy or tier_assigner or TierAssigner()
+        self.search_mode = search_mode
+        self.hybrid_service = HybridSearchService(
+            embeddings=embeddings,
+            rrf_k=rrf_k,
+            bm25_k1=bm25_k1,
+            bm25_b=bm25_b,
+        )
         self.consolidation = (
             ConsolidationService(
                 storage, llm, embeddings, self.scorer, self.tier_assigner,
@@ -93,27 +105,30 @@ class RetrievalService:
             "score_breakdown": score_breakdown.get("signals", {}),
         }
 
-    def search(self, user_id: str, query: str, top_k: int, include_superseded: bool = False):
-        query_embedding = self.embeddings.encode(query)
+    def search(
+        self,
+        user_id: str,
+        query: str,
+        top_k: int,
+        include_superseded: bool = False,
+        mode: Optional[str] = None,
+    ):
         memories = self.storage.get_memories(user_id)
         if not include_superseded:
             memories = [m for m in memories if not m.superseded_by]
-        ranked = sorted(
-            (
-                (cosine_similarity(query_embedding, memory.embedding), memory)
-                for memory in memories
-            ),
-            key=lambda item: item[0],
-            reverse=True,
-        )[:top_k]
+
+        search_mode = mode or self.search_mode
+        ranked = self.hybrid_service.search(query, memories, top_k=top_k, mode=search_mode)
+
         results = []
-        for score, memory in ranked:
+        for item in ranked:
+            memory = item["memory"]
             accessed_at = utc_now()
             self.storage.update_access_metadata(memory.memory_id, accessed_at)
             memory.last_accessed = accessed_at
             memory.updated_at = accessed_at
             memory.access_count += 1
-            results.append({"memory": memory, "similarity": score})
+            results.append(item)
         return results
 
     def chat_turn(

@@ -32,6 +32,10 @@ class Settings:
     consolidation_min_similarity: float = 0.35
     working_compression_level: int = 1
     archive_compression_level_target: int = 2
+    search_mode: str = "hybrid"
+    rrf_k: int = 60
+    bm25_k1: float = 1.5
+    bm25_b: float = 0.75
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -77,6 +81,10 @@ class Settings:
             archive_compression_level_target=int(
                 os.getenv("ARCHIVE_COMPRESSION_LEVEL_TARGET", "2")
             ),
+            search_mode=os.getenv("SEARCH_MODE", "hybrid"),
+            rrf_k=int(os.getenv("RRF_K", "60")),
+            bm25_k1=float(os.getenv("BM25_K1", "1.5")),
+            bm25_b=float(os.getenv("BM25_B", "0.75")),
         )
 
 

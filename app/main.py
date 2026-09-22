@@ -29,6 +29,7 @@ class MemorySearchRequest(BaseModel):
     user_id: str = Field(default="user-1", min_length=1)
     query: str = Field(min_length=1)
     top_k: int = Field(default=settings.default_top_k, ge=1, le=settings.max_top_k)
+    mode: Optional[str] = Field(default=None, pattern="^(hybrid|dense|sparse)$")
 
 
 class ChatTurnRequest(BaseModel):
@@ -81,6 +82,10 @@ def build_retrieval_service() -> RetrievalService:
             working_to_long_term_level=settings.working_compression_level,
             short_term_to_archive_level=settings.archive_compression_level_target,
         ),
+        search_mode=settings.search_mode,
+        rrf_k=settings.rrf_k,
+        bm25_k1=settings.bm25_k1,
+        bm25_b=settings.bm25_b,
     )
 
 
@@ -144,6 +149,10 @@ def system_status():
             "consolidation_candidate_limit": settings.consolidation_candidate_limit,
             "initial_archive_threshold": settings.initial_archive_threshold,
             "initial_long_term_threshold": settings.initial_long_term_threshold,
+            "search_mode": settings.search_mode,
+            "rrf_k": settings.rrf_k,
+            "bm25_k1": settings.bm25_k1,
+            "bm25_b": settings.bm25_b,
         },
     }
 
@@ -168,16 +177,23 @@ def store_memory(request: MemoryCreateRequest):
 def search_memories(request: MemorySearchRequest):
     try:
         matches = app.state.retrieval.search(
-            request.user_id, request.query, request.top_k
+            request.user_id, request.query, request.top_k, mode=request.mode
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     results = []
     for result in matches:
-        results.append({
+        item = {
             "similarity": result["similarity"],
             "memory": memory_to_response(result["memory"]),
-        })
+        }
+        if "dense_score" in result:
+            item["dense_score"] = round(result["dense_score"], 4)
+        if "bm25_score" in result:
+            item["bm25_score"] = round(result["bm25_score"], 4)
+        if "rrf_score" in result:
+            item["rrf_score"] = round(result["rrf_score"], 6)
+        results.append(item)
     return {
         "query": request.query,
         "results": results,
