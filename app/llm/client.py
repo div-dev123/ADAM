@@ -45,6 +45,7 @@ class LLMClient(ABC):
         user_message: str,
         retrieved_memories: Optional[list[dict]] = None,
         chat_history: Optional[list[dict]] = None,
+        formatted_context: Optional[str] = None,
     ) -> str:
         raise NotImplementedError
 
@@ -105,26 +106,31 @@ class OllamaClient(LLMClient):
         user_message: str,
         retrieved_memories: Optional[list[dict]] = None,
         chat_history: Optional[list[dict]] = None,
+        formatted_context: Optional[str] = None,
     ) -> str:
         """Generate a response using Ollama with injected memory context."""
-        context_blocks = []
-        user_msg_norm = user_message.strip().lower()
-        if retrieved_memories:
-            for item in retrieved_memories:
-                mem = item.get("memory")
-                sim = item.get("similarity", 0.0)
-                if mem:
-                    tier = getattr(mem, "tier", "UNKNOWN")
-                    content = getattr(mem, "content", str(mem))
-                    imp = getattr(mem, "importance_score", 0.0)
-                    # Don't inject redundant memory identical to the active user message
-                    if content.strip().lower() == user_msg_norm:
-                        continue
-                    context_blocks.append(
-                        f"• [{tier} | Importance: {imp:.2f} | Sim: {sim:.2f}] {content}"
-                    )
+        if formatted_context:
+            context_section = formatted_context
+        else:
+            context_blocks = []
+            user_msg_norm = user_message.strip().lower()
+            if retrieved_memories:
+                for item in retrieved_memories:
+                    mem = item.get("memory")
+                    sim = item.get("similarity", 0.0)
+                    if mem:
+                        tier = getattr(mem, "tier", "UNKNOWN")
+                        content = getattr(mem, "content", str(mem))
+                        imp = getattr(mem, "importance_score", 0.0)
+                        # Don't inject redundant memory identical to the active user message
+                        if content.strip().lower() == user_msg_norm:
+                            continue
+                        context_blocks.append(
+                            f"• [{tier} | Importance: {imp:.2f} | Sim: {sim:.2f}] {content}"
+                        )
 
-        context_text = "\n".join(context_blocks) if context_blocks else "None available."
+            context_text = "\n".join(context_blocks) if context_blocks else "None available."
+            context_section = f"=== RETRIEVED RELEVANT MEMORIES ===\n{context_text}\n==================================="
 
         system_instruction = (
             "You are ADAM Assistant, an intelligent conversational AI equipped with an Adaptive Dynamic Agent Memory (ADAM).\n"
@@ -133,8 +139,7 @@ class OllamaClient(LLMClient):
             "2. When the user provides a personal update, fact, preference, or contradiction (such as 'Actually, I now use Rust instead of Python'), warmly and conversationally acknowledge the change (e.g. 'Got it! I\\'ve updated your preference to Rust instead of Python.').\n"
             "3. Use the retrieved memories below if relevant to maintain continuity and answer questions about past context.\n"
             "4. Keep answers concise, direct, and conversational.\n\n"
-            f"=== RETRIEVED RELEVANT MEMORIES ===\n{context_text}\n"
-            "===================================\n"
+            f"{context_section}\n"
         )
 
         history_text = ""

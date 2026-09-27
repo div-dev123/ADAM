@@ -18,8 +18,10 @@ from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights
 from app.memory.lifecycle import LifecyclePolicyConfig
 from app.memory.storage import SQLiteStorage
 from app.memory.tiers import TierAssigner
+from app.retrieval.context_builder import ContextBudgetConfig
 from app.retrieval.drift import DriftConfig
 from app.retrieval.embeddings import EmbeddingService
+from app.retrieval.ranking import RankingWeights
 from app.retrieval.retrieval import RetrievalService
 
 
@@ -41,6 +43,8 @@ class MemorySearchRequest(BaseModel):
     context: Optional[str] = Field(default=None)
     chat_history: list[dict] = Field(default_factory=list)
     scope_tiers: Optional[list[str]] = Field(default=None)
+    token_budget: Optional[int] = Field(default=None, ge=1)
+    redundancy_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
 class ChatTurnRequest(BaseModel):
@@ -48,6 +52,7 @@ class ChatTurnRequest(BaseModel):
     message: str = Field(min_length=1)
     top_k: int = Field(default=settings.default_top_k, ge=1, le=settings.max_top_k)
     chat_history: list[dict] = Field(default_factory=list)
+    token_budget: Optional[int] = Field(default=None, ge=1)
 
 
 class TransitionRequest(BaseModel):
@@ -95,6 +100,18 @@ def build_retrieval_service() -> RetrievalService:
         time_weight=settings.drift_time_weight,
         time_half_life_hours=settings.drift_time_half_life_hours,
     )
+    ranking_weights = RankingWeights(
+        semantic_similarity=settings.ranking_semantic_weight,
+        query_relevance=settings.ranking_query_relevance_weight,
+        importance=settings.ranking_importance_weight,
+        recency=settings.ranking_recency_weight,
+        access_frequency=settings.ranking_frequency_weight,
+        tier=settings.ranking_tier_weight,
+    )
+    budget_config = ContextBudgetConfig(
+        token_budget=settings.retrieval_token_budget,
+        redundancy_threshold=settings.retrieval_redundancy_threshold,
+    )
     return RetrievalService(
         build_storage(),
         EmbeddingService(settings.embedding_model),
@@ -115,6 +132,8 @@ def build_retrieval_service() -> RetrievalService:
         bm25_b=settings.bm25_b,
         lifecycle_config=lifecycle_config,
         drift_config=drift_config,
+        ranking_weights=ranking_weights,
+        budget_config=budget_config,
     )
 
 
@@ -187,6 +206,16 @@ def system_status():
             "lifecycle_protected_access_count": settings.lifecycle_protected_access_count,
             "drift_low_threshold": settings.drift_low_threshold,
             "drift_high_threshold": settings.drift_high_threshold,
+            "ranking_weights": {
+                "semantic_similarity": settings.ranking_semantic_weight,
+                "query_relevance": settings.ranking_query_relevance_weight,
+                "importance": settings.ranking_importance_weight,
+                "recency": settings.ranking_recency_weight,
+                "access_frequency": settings.ranking_frequency_weight,
+                "tier": settings.ranking_tier_weight,
+            },
+            "retrieval_token_budget": settings.retrieval_token_budget,
+            "retrieval_redundancy_threshold": settings.retrieval_redundancy_threshold,
         },
     }
 
@@ -219,15 +248,23 @@ def search_memories(request: MemorySearchRequest):
             context=request.context,
             chat_history=request.chat_history,
             scope_tiers=request.scope_tiers,
+            token_budget=request.token_budget,
+            redundancy_threshold=request.redundancy_threshold,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     results = []
     for result in matches:
+        final_sc = result.get("final_score", result["similarity"])
         item = {
             "similarity": result["similarity"],
+            "final_score": round(float(final_sc), 4),
+            "ranking_score": round(float(result.get("ranking_score", final_sc)), 4),
             "memory_tier": result.get("memory_tier", result["memory"].tier),
             "importance": result.get("importance", result["memory"].importance_score),
+            "selection_reason": result.get("selection_reason", ""),
+            "signals": result.get("signals", {}),
+            "signal_scores": result.get("signal_scores", {}),
             "drift_level": result.get("drift_level"),
             "drift_score": result.get("drift_score"),
             "scope_selection_reason": result.get("scope_selection_reason"),
@@ -251,9 +288,30 @@ def search_memories(request: MemorySearchRequest):
             "reason": d.reason,
         }
 
+    budget_data = None
+    if hasattr(app.state.retrieval, "last_budget_result") and app.state.retrieval.last_budget_result:
+        b = app.state.retrieval.last_budget_result
+        budget_data = {
+            "total_tokens": b.total_tokens,
+            "total_characters": b.total_characters,
+            "budget_used_ratio": b.budget_used_ratio,
+            "token_budget": b.token_budget,
+            "discarded_count": len(b.discarded),
+            "discarded": [
+                {
+                    "memory_id": d["memory"].memory_id,
+                    "content": d["memory"].content,
+                    "reason": d.get("reason", ""),
+                    "action": d.get("action", ""),
+                }
+                for d in b.discarded
+            ],
+        }
+
     return {
         "query": request.query,
         "drift": drift_data,
+        "context_budget": budget_data,
         "results": results,
     }
 
@@ -267,6 +325,7 @@ def chat_turn(request: ChatTurnRequest):
             message=request.message,
             top_k=request.top_k,
             chat_history=request.chat_history,
+            token_budget=request.token_budget,
         )
         return turn_result
     except Exception as error:

@@ -50,6 +50,15 @@ class Settings:
     drift_high_threshold: float = 0.85
     drift_time_weight: float = 0.20
     drift_time_half_life_hours: float = 1.0
+    # Phase 6 Multi-Signal Retrieval & Context Budgeting Settings
+    ranking_semantic_weight: float = 0.35
+    ranking_query_relevance_weight: float = 0.20
+    ranking_importance_weight: float = 0.15
+    ranking_recency_weight: float = 0.10
+    ranking_frequency_weight: float = 0.10
+    ranking_tier_weight: float = 0.10
+    retrieval_token_budget: int = 800
+    retrieval_redundancy_threshold: float = 0.80
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -134,6 +143,30 @@ class Settings:
             ),
             drift_time_half_life_hours=float(
                 os.getenv("DRIFT_TIME_HALF_LIFE_HOURS", "1.0")
+            ),
+            ranking_semantic_weight=float(
+                os.getenv("RANKING_SEMANTIC_WEIGHT", "0.35")
+            ),
+            ranking_query_relevance_weight=float(
+                os.getenv("RANKING_QUERY_RELEVANCE_WEIGHT", "0.20")
+            ),
+            ranking_importance_weight=float(
+                os.getenv("RANKING_IMPORTANCE_WEIGHT", "0.15")
+            ),
+            ranking_recency_weight=float(
+                os.getenv("RANKING_RECENCY_WEIGHT", "0.10")
+            ),
+            ranking_frequency_weight=float(
+                os.getenv("RANKING_FREQUENCY_WEIGHT", "0.10")
+            ),
+            ranking_tier_weight=float(
+                os.getenv("RANKING_TIER_WEIGHT", "0.10")
+            ),
+            retrieval_token_budget=int(
+                os.getenv("RETRIEVAL_TOKEN_BUDGET", "800")
+            ),
+            retrieval_redundancy_threshold=float(
+                os.getenv("RETRIEVAL_REDUNDANCY_THRESHOLD", "0.80")
             ),
         )
 

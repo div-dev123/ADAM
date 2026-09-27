@@ -9,9 +9,16 @@ from app.memory.consolidation import ConsolidationConfig, ConsolidationService
 from app.memory.importance import HeuristicImportanceScorer, ImportanceWeights, is_filler
 from app.memory.storage import SQLiteStorage, create_memory
 from app.memory.tiers import TierAssigner
+from app.retrieval.context_builder import (
+    ContextBudgetConfig,
+    ContextBudgetResult,
+    ContextBudgeter,
+    ContextBuilder,
+)
 from app.retrieval.drift import DriftConfig, DriftResult, QueryDriftDetector
 from app.retrieval.embeddings import EmbeddingService
 from app.retrieval.hybrid import HybridSearchService
+from app.retrieval.ranking import MultiSignalRanker, RankingWeights
 from app.retrieval.similarity import cosine_similarity
 
 
@@ -34,6 +41,11 @@ class RetrievalService:
         lifecycle_manager: Optional[MemoryLifecycleManager] = None,
         drift_config: Optional[DriftConfig] = None,
         drift_detector: Optional[QueryDriftDetector] = None,
+        ranking_weights: Optional[RankingWeights] = None,
+        ranker: Optional[MultiSignalRanker] = None,
+        budget_config: Optional[ContextBudgetConfig] = None,
+        budgeter: Optional[ContextBudgeter] = None,
+        context_builder: Optional[ContextBuilder] = None,
     ):
         self.storage = storage
         self.embeddings = embeddings
@@ -73,7 +85,13 @@ class RetrievalService:
                 config=drift_config or DriftConfig(),
             )
         )
+        self.ranking_weights = ranking_weights or RankingWeights()
+        self.ranker = ranker or MultiSignalRanker(weights=self.ranking_weights)
+        self.budget_config = budget_config or ContextBudgetConfig()
+        self.budgeter = budgeter or ContextBudgeter(config=self.budget_config)
+        self.context_builder = context_builder or ContextBuilder(budgeter=self.budgeter)
         self.last_drift_result: Optional[DriftResult] = None
+        self.last_budget_result: Optional[ContextBudgetResult] = None
 
     def store_memory(self, user_id: str, content: str, source_role: str = "user") -> Optional[Memory]:
         trace = self.store_memory_with_trace(user_id, content, source_role=source_role)
@@ -139,12 +157,16 @@ class RetrievalService:
         chat_history: Optional[List[Dict[str, Any]]] = None,
         context_time: Optional[datetime] = None,
         scope_tiers: Optional[List[str]] = None,
+        token_budget: Optional[int] = None,
+        redundancy_threshold: Optional[float] = None,
+        now: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         effective_context = context if context is not None else chat_history
         drift_result = self.drift_detector.detect_drift(
             query=query,
             context=effective_context,
             context_time=context_time,
+            current_time=now,
         )
         self.last_drift_result = drift_result
 
@@ -156,20 +178,39 @@ class RetrievalService:
 
         # Apply adaptive scope filtering
         scoped_memories = [m for m in memories if m.tier in target_tiers]
+        if not scoped_memories:
+            self.last_budget_result = None
+            return []
 
         search_mode = mode or self.search_mode
-        ranked = self.hybrid_service.search(query, scoped_memories, top_k=top_k, mode=search_mode)
+        candidate_k = max(top_k * 4, 20)
+        candidate_pool = self.hybrid_service.search(
+            query, scoped_memories, top_k=candidate_k, mode=search_mode
+        )
+
+        # Multi-signal ranking across 6 signals
+        ranked = self.ranker.rank_candidates(candidate_pool, now=now)
+
+        # Context budgeting and redundancy elimination
+        budget_result = self.budgeter.select_memories(
+            ranked_candidates=ranked,
+            token_budget=token_budget,
+            max_memories=top_k,
+            redundancy_threshold=redundancy_threshold,
+        )
+        self.last_budget_result = budget_result
+        selected = budget_result.selected
 
         results = []
-        for item in ranked:
+        for item in selected:
             memory = item["memory"]
-            accessed_at = utc_now()
+            accessed_at = now or utc_now()
             self.storage.update_access_metadata(memory.memory_id, accessed_at)
             memory.last_accessed = accessed_at
             memory.updated_at = accessed_at
             memory.access_count += 1
 
-            # Enrich with Phase 5 adaptive retrieval metadata
+            # Enrich with Phase 5 adaptive retrieval and Phase 6 multi-signal metadata
             item["memory_tier"] = memory.tier
             item["importance"] = memory.importance_score
             item["drift_level"] = drift_result.drift_level
@@ -185,6 +226,7 @@ class RetrievalService:
         message: str,
         top_k: int = 5,
         chat_history: Optional[list[dict]] = None,
+        token_budget: Optional[int] = None,
     ) -> dict:
         """Execute a full conversational turn with transparent memory processing for both user and LLM."""
         pipeline_stages = []
@@ -210,7 +252,9 @@ class RetrievalService:
             })
 
         # 2. Semantic Memory Retrieval for User Query with Adaptive Drift Detection
-        retrieved_raw = self.search(user_id, message, top_k=top_k, chat_history=chat_history)
+        retrieved_raw = self.search(
+            user_id, message, top_k=top_k, chat_history=chat_history, token_budget=token_budget
+        )
         drift = self.last_drift_result
         drift_detail = (
             f"Drift: {drift.drift_level} ({drift.drift_score:.2f}) -> Scope: {', '.join(drift.scope_tiers)}"
@@ -222,10 +266,15 @@ class RetrievalService:
             "status": "completed",
             "detail": drift_detail,
         })
+        budget_info = (
+            f" ({self.last_budget_result.total_tokens}/{self.last_budget_result.token_budget} tokens)"
+            if self.last_budget_result
+            else ""
+        )
         pipeline_stages.append({
-            "stage": "Memory Retrieval",
+            "stage": "Multi-Signal Retrieval & Context Budgeting",
             "status": "completed",
-            "detail": f"Retrieved {len(retrieved_raw)} relevant memories",
+            "detail": f"Retrieved {len(retrieved_raw)} relevant memories{budget_info}",
         })
 
         # 3. Context Assembly & LLM Response Generation
@@ -237,13 +286,22 @@ class RetrievalService:
 
         response_text = ""
         llm_error = None
+        formatted_context = self.context_builder.build_context(retrieved_raw, exclude_text=message)
         if self.llm and hasattr(self.llm, "generate_chat_response"):
             try:
-                response_text = self.llm.generate_chat_response(
-                    user_message=message,
-                    retrieved_memories=retrieved_raw,
-                    chat_history=chat_history,
-                )
+                try:
+                    response_text = self.llm.generate_chat_response(
+                        user_message=message,
+                        retrieved_memories=retrieved_raw,
+                        chat_history=chat_history,
+                        formatted_context=formatted_context,
+                    )
+                except TypeError:
+                    response_text = self.llm.generate_chat_response(
+                        user_message=message,
+                        retrieved_memories=retrieved_raw,
+                        chat_history=chat_history,
+                    )
             except Exception as error:
                 llm_error = str(error)
                 response_text = (
@@ -349,10 +407,31 @@ class RetrievalService:
             "retrieved_memories": [
                 {
                     "similarity": round(float(item["similarity"]), 4),
+                    "final_score": round(float(item.get("final_score", item["similarity"])), 4),
+                    "ranking_score": round(float(item.get("ranking_score", item["similarity"])), 4),
+                    "memory_tier": item.get("memory_tier", item["memory"].tier),
+                    "importance": item.get("importance", item["memory"].importance_score),
+                    "selection_reason": item.get("selection_reason", ""),
+                    "signals": item.get("signals", {}),
+                    "signal_scores": item.get("signal_scores", {}),
+                    "dense_score": round(float(item.get("dense_score", 0.0)), 4),
+                    "bm25_score": round(float(item.get("bm25_score", 0.0)), 4),
+                    "rrf_score": round(float(item.get("rrf_score", 0.0)), 6),
                     "memory": memory_dict(item["memory"]),
                 }
                 for item in retrieved_raw
             ],
+            "context_budget": (
+                {
+                    "total_tokens": self.last_budget_result.total_tokens,
+                    "total_characters": self.last_budget_result.total_characters,
+                    "budget_used_ratio": self.last_budget_result.budget_used_ratio,
+                    "token_budget": self.last_budget_result.token_budget,
+                    "discarded_count": len(self.last_budget_result.discarded),
+                }
+                if hasattr(self, "last_budget_result") and self.last_budget_result
+                else None
+            ),
             "assistant_memory": {
                 "memory": assistant_mem_data,
                 "action": assistant_memory_trace.get("action", "NONE"),
