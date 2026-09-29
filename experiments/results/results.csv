@@ -1,11 +1,11 @@
 config_name,type,description,stored_memories,total_turns,storage_reduction_pct,mean_precision,mean_recall,mean_f1,avg_context_tokens,context_token_reduction_pct,mean_latency_ms,p95_latency_ms,redundant_memory_rate,forgotten_memory_rate,context_relevance_score
 baseline_raw_history,Baseline,"Raw conversation history baseline: keeps all messages sequentially, no retrieval filtering",14,14,0.0,0.1429,0.4286,0.1746,46.0,67.14,0.0,0.0,0.0,100.0,0.2905
-baseline_vector_only,Baseline,"Dense vector similarity baseline: top-k pure cosine similarity, no metadata signals or drift",14,14,0.0,0.2,0.9286,0.3129,57.9,58.67,36.29,53.41,0.0,0.0,0.4876
-baseline_importance_only,Baseline,Importance-based retrieval baseline: ranks memories purely by intrinsic importance score,14,14,0.0,0.1143,0.5714,0.1769,67.0,52.14,1.2,1.23,0.0,50.0,0.2867
-adam_full,Full System,"Full ADAM system: all Phase 1-6 subsystems active (drift, hybrid, 6-signal ranking, budgeting, lifecycle)",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.59,12.25,0.0,75.0,0.6088
-ablation_no_importance,Ablation,"ADAM without importance scoring: uniform 0.5 importance, zero importance ranking weight",7,14,50.0,0.2,0.9286,0.3129,65.7,53.06,11.86,14.11,0.0,75.0,0.6088
-ablation_no_tiers,Ablation,"ADAM without tier hierarchy: all memories in single flat tier, zero tier score bonus",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.31,12.34,0.0,75.0,0.6088
-ablation_no_consolidation,Ablation,"ADAM without consolidation: writes all messages as new items, no duplicate/contradiction handling",10,14,28.57,0.2,0.9286,0.3129,65.9,52.96,12.84,15.34,0.0,0.0,0.4924
-ablation_no_forgetting,Ablation,"ADAM without forgetting/decay: no Ebbinghaus decay, memories never purged",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.71,12.99,0.0,75.0,0.6088
-ablation_no_query_drift,Ablation,ADAM without adaptive query drift: retrieval always searches all tiers without scope narrowing,7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.39,12.96,0.0,75.0,0.6088
-ablation_no_multi_signal,Ablation,"ADAM without multi-signal ranking: candidates ranked purely by hybrid score without recency, tier, access, or importance weighting",7,14,50.0,0.2,0.9286,0.3129,66.3,52.65,14.47,23.52,0.0,75.0,0.6088
+baseline_vector_only,Baseline,"Dense vector similarity baseline: top-k pure cosine similarity, no metadata signals or drift",14,14,0.0,0.2,0.9286,0.3129,57.9,58.67,33.77,46.9,0.0,0.0,0.4876
+baseline_importance_only,Baseline,Importance-based retrieval baseline: ranks memories purely by intrinsic importance score,14,14,0.0,0.1143,0.5714,0.1769,67.0,52.14,1.18,1.26,0.0,50.0,0.2867
+adam_full,Full System,"Full ADAM system: all Phase 1-6 subsystems active (drift, hybrid, 6-signal ranking, budgeting, lifecycle)",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.66,12.44,0.0,75.0,0.6088
+ablation_no_importance,Ablation,"ADAM without importance scoring: uniform 0.5 importance, zero importance ranking weight",7,14,50.0,0.2,0.9286,0.3129,65.7,53.06,11.45,12.94,0.0,75.0,0.6088
+ablation_no_tiers,Ablation,"ADAM without tier hierarchy: all memories in single flat tier, zero tier score bonus",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,12.6,15.18,0.0,75.0,0.6088
+ablation_no_consolidation,Ablation,"ADAM without consolidation: writes all messages as new items, no duplicate/contradiction handling",10,14,28.57,0.2,0.9286,0.3129,65.9,52.96,11.42,11.96,0.0,0.0,0.4924
+ablation_no_forgetting,Ablation,"ADAM without forgetting/decay: no Ebbinghaus decay, memories never purged",7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.69,12.57,0.0,75.0,0.6088
+ablation_no_query_drift,Ablation,ADAM without adaptive query drift: retrieval always searches all tiers without scope narrowing,7,14,50.0,0.2,0.9286,0.3129,65.0,53.57,11.53,13.48,0.0,75.0,0.6088
+ablation_no_multi_signal,Ablation,"ADAM without multi-signal ranking: candidates ranked purely by hybrid score without recency, tier, access, or importance weighting",7,14,50.0,0.2,0.9286,0.3129,66.3,52.65,11.27,11.74,0.0,75.0,0.6088

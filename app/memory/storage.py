@@ -139,12 +139,13 @@ class SQLiteStorage:
         with self._connect() as connection:
             connection.execute(
                 """UPDATE memories SET content = ?, embedding = ?,
-                   last_accessed = ?, access_count = ?, importance_score = ?,
+                   created_at = ?, last_accessed = ?, access_count = ?, importance_score = ?,
                    tier = ?, compression_level = ?, updated_at = ?, superseded_by = ?
                    WHERE memory_id = ?""",
                 (
                     memory.content,
                     json.dumps(memory.embedding),
+                    memory.created_at.isoformat(),
                     memory.last_accessed.isoformat(),
                     memory.access_count,
                     memory.importance_score,

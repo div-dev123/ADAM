@@ -393,6 +393,8 @@ class RetrievalService:
             "response": response_text,
             "user_memory": {
                 "memory": user_mem_data,
+                "memory_id": user_mem_data["memory_id"] if user_mem_data else None,
+                "content": user_mem_data["content"] if user_mem_data else None,
                 "action": user_memory_trace.get("action", "NONE"),
                 "decision_reason": user_memory_trace.get("decision_reason", ""),
                 "merged_content": user_memory_trace.get("merged_content"),
@@ -434,6 +436,8 @@ class RetrievalService:
             ),
             "assistant_memory": {
                 "memory": assistant_mem_data,
+                "memory_id": assistant_mem_data["memory_id"] if assistant_mem_data else None,
+                "content": assistant_mem_data["content"] if assistant_mem_data else None,
                 "action": assistant_memory_trace.get("action", "NONE"),
                 "decision_reason": assistant_memory_trace.get("decision_reason", ""),
                 "merged_content": assistant_memory_trace.get("merged_content"),

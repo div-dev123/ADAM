@@ -338,16 +338,19 @@ class MemoryLifecycleManager:
                 }
                 if not dry_run and decision.to_tier:
                     old_tier = memory.tier
-                    memory.tier = decision.to_tier
-                    memory.updated_at = current_time
-                    self.storage.update_memory(memory)
-                    self.storage.record_history(
-                        memory=memory,
-                        operation="TIER_TRANSITION",
-                        old_content=f"tier:{old_tier}",
-                        new_content=f"tier:{decision.to_tier}",
-                        reason=decision.reason,
-                    )
+                    if self.compression_service:
+                        self.compression_service.transition(memory, decision.to_tier)
+                    else:
+                        memory.tier = decision.to_tier
+                        memory.updated_at = current_time
+                        self.storage.update_memory(memory)
+                        self.storage.record_history(
+                            memory=memory,
+                            operation="TIER_TRANSITION",
+                            old_content=f"tier:{old_tier}",
+                            new_content=f"tier:{decision.to_tier}",
+                            reason=decision.reason,
+                        )
                 transitions.append(transition_item)
 
             elif decision.action == "PROTECT":

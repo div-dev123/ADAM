@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-27T11:02:15Z",
+  "timestamp": "2026-09-27T12:49:42Z",
   "total_experiments": 10,
   "experiments": [
     {
@@ -186,15 +186,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.4876,
-      "mean_latency_ms": 36.29,
-      "p95_latency_ms": 53.41,
+      "mean_latency_ms": 33.77,
+      "p95_latency_ms": 46.9,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 0.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 50.166,
+          "latency_ms": 48.064,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -215,7 +215,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 42.686,
+          "latency_ms": 42.745,
           "retrieved_count": 5,
           "retrieved_tokens": 42,
           "precision": 0.2,
@@ -236,7 +236,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 54.801,
+          "latency_ms": 41.901,
           "retrieved_count": 5,
           "retrieved_tokens": 56,
           "precision": 0.2,
@@ -257,7 +257,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 9.852,
+          "latency_ms": 9.383,
           "retrieved_count": 5,
           "retrieved_tokens": 69,
           "precision": 0.4,
@@ -278,7 +278,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 44.758,
+          "latency_ms": 44.182,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -299,7 +299,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 10.154,
+          "latency_ms": 9.352,
           "retrieved_count": 5,
           "retrieved_tokens": 56,
           "precision": 0.2,
@@ -320,7 +320,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 41.593,
+          "latency_ms": 40.741,
           "retrieved_count": 5,
           "retrieved_tokens": 49,
           "precision": 0.0,
@@ -355,15 +355,15 @@
       "mean_recall": 0.5714,
       "mean_f1": 0.1769,
       "context_relevance_score": 0.2867,
-      "mean_latency_ms": 1.2,
-      "p95_latency_ms": 1.23,
+      "mean_latency_ms": 1.18,
+      "p95_latency_ms": 1.26,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 50.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 1.248,
+          "latency_ms": 1.28,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.4,
@@ -384,7 +384,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 1.191,
+          "latency_ms": 1.228,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.0,
@@ -405,7 +405,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 1.2,
+          "latency_ms": 1.159,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.0,
@@ -426,7 +426,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 1.185,
+          "latency_ms": 1.157,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.2,
@@ -447,7 +447,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 1.197,
+          "latency_ms": 1.145,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.0,
@@ -468,7 +468,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 1.18,
+          "latency_ms": 1.151,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.2,
@@ -489,7 +489,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 1.189,
+          "latency_ms": 1.164,
           "retrieved_count": 5,
           "retrieved_tokens": 67,
           "precision": 0.0,
@@ -524,15 +524,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 11.59,
-      "p95_latency_ms": 12.25,
+      "mean_latency_ms": 11.66,
+      "p95_latency_ms": 12.44,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 12.036,
+          "latency_ms": 12.003,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -553,7 +553,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 11.974,
+          "latency_ms": 12.629,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -574,7 +574,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 11.248,
+          "latency_ms": 11.602,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -595,7 +595,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 11.185,
+          "latency_ms": 11.486,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.4,
@@ -616,7 +616,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 10.938,
+          "latency_ms": 11.512,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -637,7 +637,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 11.41,
+          "latency_ms": 11.164,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -658,7 +658,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 12.34,
+          "latency_ms": 11.225,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.0,
@@ -693,15 +693,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 11.86,
-      "p95_latency_ms": 14.11,
+      "mean_latency_ms": 11.45,
+      "p95_latency_ms": 12.94,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 14.549,
+          "latency_ms": 13.316,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -722,7 +722,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 10.624,
+          "latency_ms": 11.252,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -743,7 +743,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 11.278,
+          "latency_ms": 11.269,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -764,7 +764,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 12.293,
+          "latency_ms": 10.91,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.4,
@@ -785,7 +785,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 10.601,
+          "latency_ms": 10.477,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -806,7 +806,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 10.605,
+          "latency_ms": 10.838,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -827,7 +827,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 13.084,
+          "latency_ms": 12.065,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.0,
@@ -862,15 +862,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 11.31,
-      "p95_latency_ms": 12.34,
+      "mean_latency_ms": 12.6,
+      "p95_latency_ms": 15.18,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 11.688,
+          "latency_ms": 11.268,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -891,7 +891,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 11.063,
+          "latency_ms": 10.309,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -912,7 +912,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 11.184,
+          "latency_ms": 12.626,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -933,7 +933,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 11.222,
+          "latency_ms": 13.524,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.4,
@@ -954,7 +954,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 10.598,
+          "latency_ms": 15.892,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -975,7 +975,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 12.625,
+          "latency_ms": 12.642,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -996,7 +996,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 10.797,
+          "latency_ms": 11.909,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.0,
@@ -1031,15 +1031,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.4924,
-      "mean_latency_ms": 12.84,
-      "p95_latency_ms": 15.34,
+      "mean_latency_ms": 11.42,
+      "p95_latency_ms": 11.96,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 0.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 12.286,
+          "latency_ms": 12.021,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1060,7 +1060,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 12.508,
+          "latency_ms": 10.995,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -1081,7 +1081,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 11.958,
+          "latency_ms": 11.378,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -1102,7 +1102,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 12.141,
+          "latency_ms": 11.42,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.4,
@@ -1123,7 +1123,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 11.661,
+          "latency_ms": 10.895,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -1144,7 +1144,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 12.943,
+          "latency_ms": 11.819,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1165,7 +1165,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 16.366,
+          "latency_ms": 11.446,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.0,
@@ -1200,15 +1200,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 11.71,
-      "p95_latency_ms": 12.99,
+      "mean_latency_ms": 11.69,
+      "p95_latency_ms": 12.57,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 13.321,
+          "latency_ms": 11.615,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -1229,7 +1229,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 12.214,
+          "latency_ms": 12.27,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1250,7 +1250,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 12.207,
+          "latency_ms": 12.155,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1271,7 +1271,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 11.096,
+          "latency_ms": 11.221,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.4,
@@ -1292,7 +1292,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 11.146,
+          "latency_ms": 12.702,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -1313,7 +1313,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 10.932,
+          "latency_ms": 10.941,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -1334,7 +1334,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 11.085,
+          "latency_ms": 10.908,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.0,
@@ -1369,15 +1369,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 11.39,
-      "p95_latency_ms": 12.96,
+      "mean_latency_ms": 11.53,
+      "p95_latency_ms": 13.48,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 12.217,
+          "latency_ms": 14.257,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -1398,7 +1398,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 13.277,
+          "latency_ms": 10.718,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1419,7 +1419,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 11.021,
+          "latency_ms": 11.075,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1440,7 +1440,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 10.912,
+          "latency_ms": 11.678,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.4,
@@ -1461,7 +1461,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 10.465,
+          "latency_ms": 11.106,
           "retrieved_count": 5,
           "retrieved_tokens": 62,
           "precision": 0.2,
@@ -1482,7 +1482,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 11.017,
+          "latency_ms": 11.18,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -1503,7 +1503,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 10.845,
+          "latency_ms": 10.731,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.0,
@@ -1538,15 +1538,15 @@
       "mean_recall": 0.9286,
       "mean_f1": 0.3129,
       "context_relevance_score": 0.6088,
-      "mean_latency_ms": 14.47,
-      "p95_latency_ms": 23.52,
+      "mean_latency_ms": 11.27,
+      "p95_latency_ms": 11.74,
       "redundant_memory_rate": 0.0,
       "forgotten_memory_rate": 75.0,
       "query_results": [
         {
           "query_id": "q1_language",
           "query": "What programming language does our backend service use?",
-          "latency_ms": 11.364,
+          "latency_ms": 11.309,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1567,7 +1567,7 @@
         {
           "query_id": "q2_location",
           "query": "Where do I currently live?",
-          "latency_ms": 12.065,
+          "latency_ms": 10.773,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -1588,7 +1588,7 @@
         {
           "query_id": "q3_kafka",
           "query": "What is our internal Kafka broker cluster address?",
-          "latency_ms": 15.762,
+          "latency_ms": 11.38,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.2,
@@ -1609,7 +1609,7 @@
         {
           "query_id": "q4_database",
           "query": "What relational database do we use for data persistence?",
-          "latency_ms": 26.852,
+          "latency_ms": 11.633,
           "retrieved_count": 5,
           "retrieved_tokens": 66,
           "precision": 0.4,
@@ -1630,7 +1630,7 @@
         {
           "query_id": "q5_latency",
           "query": "What are the latency SLA requirements for our API endpoints?",
-          "latency_ms": 10.772,
+          "latency_ms": 10.597,
           "retrieved_count": 5,
           "retrieved_tokens": 65,
           "precision": 0.2,
@@ -1651,7 +1651,7 @@
         {
           "query_id": "q6_drink",
           "query": "What beverage do I like while debugging?",
-          "latency_ms": 12.855,
+          "latency_ms": 11.421,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.2,
@@ -1672,7 +1672,7 @@
         {
           "query_id": "q7_out_of_scope",
           "query": "What is my favorite vacation destination in Europe?",
-          "latency_ms": 11.62,
+          "latency_ms": 11.793,
           "retrieved_count": 5,
           "retrieved_tokens": 68,
           "precision": 0.0,

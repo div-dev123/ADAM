@@ -4,7 +4,7 @@
 
 **Description**: A controlled multi-turn conversation containing critical facts, filler, repeats, and contradictory updates.
 
-**Generated**: 2026-09-27 11:02:15 UTC
+**Generated**: 2026-09-27 12:49:42 UTC
 
 
 ## 1. Executive Summary Table
@@ -13,15 +13,15 @@
 | Configuration | Type | Stored Mems | Storage Red. | Precision | Recall | F1 Score | Context Tokens | Token Red. | Latency | Redundancy | Forgotten Rate | Relevance |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | `baseline_raw_history` | Baseline | 14/14 | 0.0% | 0.143 | 0.429 | 0.175 | 46 | 67.14% | 0.0ms | 0.0% | 100.0% | 0.290 |
-| `baseline_vector_only` | Baseline | 14/14 | 0.0% | 0.200 | 0.929 | 0.313 | 58 | 58.67% | 36.3ms | 0.0% | 0.0% | 0.488 |
+| `baseline_vector_only` | Baseline | 14/14 | 0.0% | 0.200 | 0.929 | 0.313 | 58 | 58.67% | 33.8ms | 0.0% | 0.0% | 0.488 |
 | `baseline_importance_only` | Baseline | 14/14 | 0.0% | 0.114 | 0.571 | 0.177 | 67 | 52.14% | 1.2ms | 0.0% | 50.0% | 0.287 |
-| `adam_full` | Full System | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.6ms | 0.0% | 75.0% | 0.609 |
-| `ablation_no_importance` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 66 | 53.06% | 11.9ms | 0.0% | 75.0% | 0.609 |
-| `ablation_no_tiers` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.3ms | 0.0% | 75.0% | 0.609 |
-| `ablation_no_consolidation` | Ablation | 10/14 | 28.57% | 0.200 | 0.929 | 0.313 | 66 | 52.96% | 12.8ms | 0.0% | 0.0% | 0.492 |
+| `adam_full` | Full System | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.7ms | 0.0% | 75.0% | 0.609 |
+| `ablation_no_importance` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 66 | 53.06% | 11.4ms | 0.0% | 75.0% | 0.609 |
+| `ablation_no_tiers` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 12.6ms | 0.0% | 75.0% | 0.609 |
+| `ablation_no_consolidation` | Ablation | 10/14 | 28.57% | 0.200 | 0.929 | 0.313 | 66 | 52.96% | 11.4ms | 0.0% | 0.0% | 0.492 |
 | `ablation_no_forgetting` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.7ms | 0.0% | 75.0% | 0.609 |
-| `ablation_no_query_drift` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.4ms | 0.0% | 75.0% | 0.609 |
-| `ablation_no_multi_signal` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 66 | 52.65% | 14.5ms | 0.0% | 75.0% | 0.609 |
+| `ablation_no_query_drift` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 65 | 53.57% | 11.5ms | 0.0% | 75.0% | 0.609 |
+| `ablation_no_multi_signal` | Ablation | 7/14 | 50.0% | 0.200 | 0.929 | 0.313 | 66 | 52.65% | 11.3ms | 0.0% | 75.0% | 0.609 |
 
 
 ## 2. Key Insights & Ablation Findings
