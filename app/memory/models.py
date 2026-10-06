@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Optional
 
 
 def utc_now() -> datetime:
@@ -21,8 +22,8 @@ class Memory:
     importance_score: float = 0.0
     tier: str = "WORKING"
     compression_level: int = 0
-    updated_at: datetime | None = None
-    superseded_by: str | None = None
+    updated_at: Optional[datetime] = None
+    superseded_by: Optional[str] = None
     source_role: str = "user"  # "user" or "assistant"
 
     def __post_init__(self):

@@ -13,4 +13,5 @@ data/*.db
 # Test and coverage output
 .coverage
 htmlcov/
-coverage.xml
+coverage.xmlexperiments/results/*.csv
+experiments/results/*.json

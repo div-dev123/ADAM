@@ -7,7 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,300;1,14..32,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/styles.css?v=3.6">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css?v=3.9">
 </head>
 <body>
     <div id="app-container">
@@ -19,7 +20,7 @@
                     <div class="brand-dot"></div>
                 </div>
                 <div class="brand-text">
-                    <span class="brand-name">ADAM</span>
+                    <span class="brand-name gradient-text-teal">ADAM</span>
                     <span class="brand-divider"></span>
                     <span class="brand-sub">Adaptive Memory Management</span>
                 </div>
@@ -43,6 +44,9 @@
                 </button>
                 <button class="nav-tab" data-view="metrics" id="tab-metrics" onclick="window.ADAM.switchView('metrics')">
                     <span class="tab-label">Research Metrics</span>
+                </button>
+                <button class="nav-tab" data-view="graph" id="tab-graph" onclick="window.ADAM.switchView('graph')">
+                    <span class="tab-label">Memory Graph</span>
                 </button>
             </nav>
 
@@ -71,7 +75,7 @@
                         <!-- Pipeline Banner -->
                         <div class="pipeline-flow-banner" id="pipeline-banner">
                             <div class="pipeline-flow-header">
-                                <span class="flow-title">Write &amp; Retrieval Pipeline</span>
+                                <span class="flow-title gradient-text-royal">Write &amp; Retrieval Pipeline</span>
                                 <span class="flow-status" id="pipeline-overall-status">Idle — Awaiting input</span>
                             </div>
                             <div class="pipeline-steps-grid">
@@ -256,6 +260,18 @@
             <!-- VIEW 3: LIFECYCLE EXPLORER -->
             <section class="view-panel" id="view-lifecycle">
                 <div class="lifecycle-container">
+                    
+                    <!-- Time Travel Simulator -->
+                    <div class="time-travel-card">
+                        <div class="card-header-clean">
+                            <div>
+                                <h4 style="color:#67e8f9">⏳ Time-Travel Simulator</h4>
+                                <p class="card-subtitle">Artificially age all memories to watch the Ebbinghaus decay function trigger lifecycle transitions dynamically.</p>
+                            </div>
+                            <button class="btn btn-primary btn-sm" id="btn-simulate-time" onclick="window.ADAM.simulateTime(30)">Fast Forward +30 Days</button>
+                        </div>
+                    </div>
+
                     <div class="concept-banner">
                         <div class="concept-body">
                             <h3>Decoupled Intrinsic Value vs. Lifecycle State</h3>
@@ -470,6 +486,64 @@
                         </div>
                     </div>
 
+                    <!-- Ebbinghaus Retention Curve -->
+                    <div class="chart-card ebbinghaus-card">
+                        <div class="card-header-clean">
+                            <div>
+                                <h4>Ebbinghaus Retention Decay Curve</h4>
+                                <p class="card-subtitle">Theoretical memory retention per tier over time — R = e<sup>&minus;&lambda;t</sup></p>
+                            </div>
+                            <span class="badge badge-subtle">Mathematical Model</span>
+                        </div>
+                        <canvas id="ebbinghaus-canvas" height="180"></canvas>
+                        <div class="ebbinghaus-legend">
+                            <span class="ebb-legend-item"><span class="ebb-dot" style="background:#67e8f9"></span>Working (&lambda;=0.05, ~20d half-life)</span>
+                            <span class="ebb-legend-item"><span class="ebb-dot" style="background:#6ee7b7"></span>Short-Term (&lambda;=0.10, ~10d)</span>
+                            <span class="ebb-legend-item"><span class="ebb-dot" style="background:#c4b5fd"></span>Long-Term (&lambda;=0.025, ~40d)</span>
+                            <span class="ebb-legend-item"><span class="ebb-dot" style="background:#fcd34d"></span>Archive (&lambda;=0.005, ~200d)</span>
+                            <span class="ebb-legend-item"><span class="ebb-dot" style="background:rgba(255,255,255,0.25)"></span>Forgetting threshold (0.25)</span>
+                        </div>
+                    </div>
+
+                    <!-- System Comparison Table -->
+                    <div class="chart-card comparison-card">
+                        <div class="card-header-clean">
+                            <div>
+                                <h4>System Comparison vs. Alternative Approaches</h4>
+                                <p class="card-subtitle">ADAM vs. industry memory systems — feature coverage</p>
+                            </div>
+                            <span class="badge badge-subtle">Research Context</span>
+                        </div>
+                        <div class="comparison-table-wrap">
+                            <table class="comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th>Feature</th>
+                                        <th class="adam-col">ADAM</th>
+                                        <th>Raw History</th>
+                                        <th>LangChain Buffer</th>
+                                        <th>MemGPT</th>
+                                        <th>Zep</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Noise / filler filtering</td><td class="adam-col"><span class="cmp-yes">Yes</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-partial">Partial</span></td><td><span class="cmp-partial">Partial</span></td></tr>
+                                    <tr><td>Contradiction detection</td><td class="adam-col"><span class="cmp-yes">Heuristic + LLM</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-yes">LLM only</span></td><td><span class="cmp-partial">LLM only</span></td></tr>
+                                    <tr><td>Explainable importance score</td><td class="adam-col"><span class="cmp-yes">6-signal heuristic</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td></tr>
+                                    <tr><td>Tiered memory hierarchy</td><td class="adam-col"><span class="cmp-yes">4 tiers</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-yes">2 tiers</span></td><td><span class="cmp-partial">2 tiers</span></td></tr>
+                                    <tr><td>Ebbinghaus forgetting curve</td><td class="adam-col"><span class="cmp-yes">Mathematical decay</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td></tr>
+                                    <tr><td>Hybrid retrieval (dense + BM25 RRF)</td><td class="adam-col"><span class="cmp-yes">Yes</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">Dense only</span></td><td><span class="cmp-partial">Dense only</span></td><td><span class="cmp-yes">Yes</span></td></tr>
+                                    <tr><td>Query drift adaptation</td><td class="adam-col"><span class="cmp-yes">Semantic + temporal</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td></tr>
+                                    <tr><td>Immutable audit trail</td><td class="adam-col"><span class="cmp-yes">Full SQLite log</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-partial">Partial</span></td></tr>
+                                    <tr><td>Fully offline / local</td><td class="adam-col"><span class="cmp-yes">Yes</span></td><td><span class="cmp-yes">Yes</span></td><td><span class="cmp-yes">Yes</span></td><td><span class="cmp-yes">Yes</span></td><td><span class="cmp-no">Cloud required</span></td></tr>
+                                    <tr><td>LangChain / LangGraph integration</td><td class="adam-col"><span class="cmp-yes">Native adapter</span></td><td><span class="cmp-no">No</span></td><td><span class="cmp-yes">Native</span></td><td><span class="cmp-partial">Via tools</span></td><td><span class="cmp-yes">Yes</span></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+
+
                     <div class="system-config-card">
                         <div class="card-header-clean">
                             <h4>System &amp; Environment</h4>
@@ -494,7 +568,7 @@
                             </div>
                             <div class="config-item">
                                 <span class="config-lbl">Consolidation Threshold</span>
-                                <span class="config-val" id="sys-sim-threshold">Cosine Sim ≥ 0.35</span>
+                                <span class="config-val" id="sys-sim-threshold">Cosine Sim &ge; 0.35</span>
                             </div>
                             <div class="config-item">
                                 <span class="config-lbl">Max LLM Candidates</span>
@@ -503,6 +577,15 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- VIEW 6: MEMORY GRAPH -->
+            <section class="view-panel" id="view-graph" style="padding:0;overflow:hidden;">
+                <div style="padding:20px 24px 0;">
+                    <h3 style="margin:0 0 4px;font-size:15px;">Live Knowledge Graph</h3>
+                    <p class="card-subtitle" style="margin:0 0 16px;">Each node is a memory, colored by tier. Lines connect semantically related memories (cosine similarity &gt; 0.35). Drag nodes to rearrange.</p>
+                </div>
+                <div id="memory-network-graph" style="position:relative;width:100%;height:calc(100vh - 180px);background:rgba(0,0,0,0.15);border-top:1px solid var(--border);overflow:hidden;"></div>
             </section>
 
         </main>
@@ -596,6 +679,6 @@
 
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="/static/js/app.js?v=3.6"></script>
+    <script src="/static/js/app.js?v=3.11"></script>
 </body>
 </html>

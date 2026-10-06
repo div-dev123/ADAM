@@ -1,44 +1,47 @@
 /* ==========================================================================
-   ADAM — Apple-Inspired Minimal Research Interface
+   ADAM — NOA Inspired Glassmorphism Theme
    ========================================================================== */
 
 :root {
+    /* NOA Backgrounds */
     --bg: #000000;
-    --bg-1: #0a0a0a;
-    --bg-2: #111111;
-    --bg-3: #1a1a1a;
+    --bg-1: rgba(255, 255, 255, 0.02);
+    --bg-2: rgba(255, 255, 255, 0.04);
+    --bg-3: rgba(255, 255, 255, 0.08);
 
-    --border: rgba(255, 255, 255, 0.09);
-    --border-md: rgba(255, 255, 255, 0.14);
-    --border-hi: rgba(255, 255, 255, 0.28);
+    /* Glass borders */
+    --border: rgba(255, 255, 255, 0.08);
+    --border-md: rgba(255, 255, 255, 0.12);
+    --border-hi: rgba(255, 255, 255, 0.25);
 
+    /* High contrast text */
     --text-1: #ffffff;
-    --text-2: #e5e5e5;
-    --text-3: #a0a0a0;
-    --text-4: #555555;
+    --text-2: rgba(255, 255, 255, 0.85);
+    --text-3: rgba(255, 255, 255, 0.5);
+    --text-4: rgba(255, 255, 255, 0.3);
 
-    /* Tier palette — muted, refined */
-    --c-working:    #5ba8b8;
-    --c-working-bg: rgba(91, 168, 184, 0.08);
-    --c-short:      #52997a;
-    --c-short-bg:   rgba(82, 153, 122, 0.08);
-    --c-long:       #7c6baa;
-    --c-long-bg:    rgba(124, 107, 170, 0.08);
-    --c-archive:    #a07d3e;
-    --c-archive-bg: rgba(160, 125, 62, 0.08);
+    /* Vibrant NOA Accents */
+    --c-working:    #40e0d0; /* Turquoise */
+    --c-working-bg: rgba(64, 224, 208, 0.15);
+    --c-short:      #99A9FF; /* Soft Blue/Purple */
+    --c-short-bg:   rgba(153, 169, 255, 0.15);
+    --c-long:       #a78bfa; /* Royal */
+    --c-long-bg:    rgba(167, 139, 250, 0.15);
+    --c-archive:    #fcd34d; /* Gold */
+    --c-archive-bg: rgba(252, 211, 77, 0.15);
 
-    --c-danger: #a05060;
+    --c-danger: #f87171;
 
-    --r-xs: 4px;
-    --r-sm: 6px;
-    --r-md: 10px;
-    --r-lg: 14px;
+    --r-xs: 6px;
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
     --r-pill: 9999px;
 
     --font: 'Inter', system-ui, -apple-system, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, monospace;
 
-    --header-h: 56px;
+    --header-h: 64px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,17 +50,50 @@ html, body { height: 100%; width: 100%; overflow: hidden; }
 
 body {
     font-family: var(--font);
-    font-size: 14px;
+    font-size: 14.5px;
     background: var(--bg);
     color: var(--text-2);
-    line-height: 1.5;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
 }
 
-::-webkit-scrollbar { width: 3px; height: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+/* NOA Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+::selection { background: rgba(64, 224, 208, 0.3); color: white; }
+
+/* NOA Glass & Gradient Utilities */
+.glass {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-hover:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.gradient-text-teal {
+    background: linear-gradient(135deg, #40e0d0 0%, #1fc8b9 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.gradient-text-royal {
+    background: linear-gradient(135deg, #c4b5fd 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.glow-teal { box-shadow: 0 0 20px rgba(64, 224, 208, 0.15); }
+.glow-royal { box-shadow: 0 0 20px rgba(124, 58, 237, 0.2); }
 
 /* ==========================================================================
    Header
@@ -148,7 +184,8 @@ body {
     align-items: stretch;
     height: 100%;
     flex: 1;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .nav-tab {
@@ -1421,6 +1458,72 @@ svg.search-icon-svg {
    Responsive
    ========================================================================== */
 
+/* ==========================================================================
+   Time Travel Simulator & Benchmark Additions
+   ========================================================================== */
+
+.time-travel-card {
+    background: rgba(103, 232, 249, 0.05);
+    border: 1px solid rgba(103, 232, 249, 0.2);
+    border-radius: var(--r-md);
+    padding: 16px 24px;
+    margin-bottom: 20px;
+}
+
+.benchmark-card {
+    padding: 20px 24px;
+}
+
+.benchmark-bars-container {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.b-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.b-bar-label {
+    width: 160px;
+    font-size: 11px;
+    color: var(--text-2);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.b-bar-track {
+    flex: 1;
+    height: 12px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.b-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: var(--text-4);
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.b-bar-fill.fill-adam {
+    background: linear-gradient(90deg, #38bdf8, #818cf8);
+}
+
+.b-bar-val {
+    width: 40px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 1024px) {
     .chat-layout { grid-template-columns: 1fr; }
     .chat-inspector-column { display: none; }
@@ -1428,3 +1531,128 @@ svg.search-icon-svg {
     .stats-overview-grid { grid-template-columns: repeat(2, 1fr); }
     .metrics-charts-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Ebbinghaus Curve Card
+   ========================================================================== */
+
+.ebbinghaus-card {
+    padding: 20px 24px;
+}
+
+.card-subtitle {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-top: 2px;
+    font-weight: 400;
+}
+
+#ebbinghaus-canvas {
+    width: 100%;
+    display: block;
+    margin-top: 16px;
+    border-radius: var(--r-sm);
+    background: rgba(255,255,255,0.02);
+}
+
+.ebbinghaus-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin-top: 14px;
+}
+
+.ebb-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+.ebb-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ==========================================================================
+   System Comparison Table
+   ========================================================================== */
+
+.comparison-card {
+    padding: 20px 24px;
+}
+
+.comparison-table-wrap {
+    margin-top: 16px;
+    overflow-x: auto;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+}
+
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.comparison-table th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-2);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.comparison-table th.adam-col {
+    color: var(--text-1);
+    background: rgba(255,255,255,0.06);
+}
+
+.comparison-table td {
+    padding: 9px 14px;
+    color: var(--text-3);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+}
+
+.comparison-table tr:last-child td { border-bottom: none; }
+
+.comparison-table td.adam-col {
+    background: rgba(255,255,255,0.03);
+}
+
+.comparison-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+.comparison-table tbody tr:hover td.adam-col { background: rgba(255,255,255,0.05); }
+
+.cmp-yes {
+    color: #6ee7b7;
+    font-weight: 500;
+    font-size: 12px;
+}
+
+.cmp-no {
+    color: var(--text-4);
+    font-size: 12px;
+}
+
+.cmp-partial {
+    color: #fcd34d;
+    font-size: 12px;
+}
+
+
+/* NOA Glassmorphism Overrides */
+.chat-welcome-card, .dashboard-card, .mem-card, .stat-card, .results-panel, .query-history-card, .timeline-card, .pipeline-flow-banner, .step-card, .status-pill, .user-selector-wrapper {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+

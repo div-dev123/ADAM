@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from app.retrieval.embeddings import EmbeddingService
 from experiments.configs import ExperimentConfig, get_standard_configurations
-from experiments.dataset import BenchmarkDataset, get_default_benchmark_dataset
+from experiments.dataset_v2 import BenchmarkDataset, get_extended_benchmark_dataset
 from experiments.metrics import (
     AggregateExperimentMetrics,
     QueryMetricResult,
@@ -207,7 +207,7 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="experiments/benchmark_dataset.json",
+        default="experiments/benchmark_dataset_v2.json",
         help="Path to benchmark dataset JSON file",
     )
     parser.add_argument(
@@ -242,7 +242,7 @@ def main():
         dataset = BenchmarkDataset.load_json(dataset_path)
     else:
         print(f"Dataset {dataset_path} not found. Generating default benchmark dataset...")
-        dataset = get_default_benchmark_dataset()
+        dataset = get_extended_benchmark_dataset()
         dataset.save_json(dataset_path)
 
     print(f"Loaded benchmark dataset: '{dataset.name}' ({len(dataset.turns)} turns, {len(dataset.queries)} queries)")

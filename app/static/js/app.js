@@ -125,6 +125,7 @@
         try {
             const response = await fetch(endpoint, {
                 headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                cache: 'no-store',
                 ...options,
             });
             if (!response.ok) {
@@ -228,6 +229,7 @@
         if (viewName === 'lifecycle') loadLifecycleTracer();
         if (viewName === 'consolidation') loadConsolidationFeed();
         if (viewName === 'metrics') loadMetrics();
+        if (viewName === 'graph') renderMemoryGraph();
     }
 
     // =========================================================================
@@ -888,11 +890,106 @@
             elements.countContradictory.textContent = cc.CONTRADICTORY || 0;
             elements.countCompressedOp.textContent = cc.COMPRESSED || 0;
 
+            renderEbbinghausCurve();
+            await loadEvaluationMetrics();
             checkSystemStatus();
         } catch (error) {
             console.error('Failed to load metrics:', error);
             showToast(`Metrics error: ${error.message}`, 'danger');
         }
+    }
+
+    function renderEbbinghausCurve() {
+        const canvas = document.getElementById('ebbinghaus-canvas');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const width = canvas.parentElement.clientWidth - 48; // Account for padding
+        const height = 180;
+        
+        // Ensure high-dpi rendering
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.scale(dpr, dpr);
+
+        ctx.clearRect(0, 0, width, height);
+
+        const days = 100; // Plot over 100 days
+        const paddingLeft = 40;
+        const paddingBottom = 30;
+        const paddingTop = 10;
+        const paddingRight = 10;
+        
+        const plotWidth = width - paddingLeft - paddingRight;
+        const plotHeight = height - paddingBottom - paddingTop;
+
+        // Draw Axes
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        // X-axis
+        ctx.moveTo(paddingLeft, height - paddingBottom);
+        ctx.lineTo(width - paddingRight, height - paddingBottom);
+        // Y-axis
+        ctx.moveTo(paddingLeft, paddingTop);
+        ctx.lineTo(paddingLeft, height - paddingBottom);
+        ctx.stroke();
+
+        // Draw Forgetting Threshold Line (0.25)
+        const thresholdY = paddingTop + plotHeight * (1 - 0.25);
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(paddingLeft, thresholdY);
+        ctx.lineTo(width - paddingRight, thresholdY);
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+
+        // Labels
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('1.0', paddingLeft - 8, paddingTop);
+        ctx.fillText('0.5', paddingLeft - 8, paddingTop + plotHeight / 2);
+        ctx.fillText('0.0', paddingLeft - 8, height - paddingBottom);
+        
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('0d', paddingLeft, height - paddingBottom + 8);
+        ctx.fillText('50d', paddingLeft + plotWidth / 2, height - paddingBottom + 8);
+        ctx.fillText('100d', paddingLeft + plotWidth, height - paddingBottom + 8);
+
+        // Drawing function for a curve
+        function drawCurve(lambda, color) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            
+            for (let t = 0; t <= days; t++) {
+                // R = e^(-lambda * t)
+                const R = Math.exp(-lambda * t);
+                
+                const x = paddingLeft + (t / days) * plotWidth;
+                const y = paddingTop + (1 - R) * plotHeight;
+                
+                if (t === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        // Draw curves for tiers
+        drawCurve(0.05, '#67e8f9'); // Working
+        drawCurve(0.10, '#6ee7b7'); // Short-Term
+        drawCurve(0.025, '#c4b5fd'); // Long-Term
+        drawCurve(0.005, '#fcd34d'); // Archive
     }
 
     // =========================================================================
@@ -1052,6 +1149,165 @@
     }
 
     // =========================================================================
+    // Enhanced Features (Time Travel, Benchmark, Graph)
+    // =========================================================================
+
+    async function simulateTime(days) {
+        if (!confirm(`Are you sure you want to age all memories by ${days} days? This will permanently trigger lifecycle decay.`)) return;
+        try {
+            const result = await apiRequest('/simulate-time', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: state.userId, days: days }),
+            });
+            showToast(`Time traveled +${days} days. Lifecycle report generated.`, 'success');
+            // Redirect them to the dashboard so they can visually see the memories decay into Archive
+            switchView('dashboard');
+        } catch (error) {
+            showToast(`Simulation failed: ${error.message}`, 'danger');
+        }
+    }
+
+    async function loadEvaluationMetrics() {
+        const container = document.getElementById('benchmark-bars-container');
+        if (!container) return;
+        try {
+            const data = await apiRequest('/metrics/evaluation');
+            if (data.error) {
+                container.innerHTML = `<div class="text-subtle" style="padding:20px; font-size:12px;">${escapeHtml(data.error)}</div>`;
+                return;
+            }
+            let html = '';
+            // data is results.json from benchmark
+            const exps = data.experiments || [];
+            
+            // Sort by mean_f1 descending
+            exps.sort((a,b) => (b.mean_f1 || 0) - (a.mean_f1 || 0));
+            
+            for (const exp of exps) {
+                const configName = exp.config_name;
+                const f1 = exp.mean_f1 || 0;
+                const pct = Math.round(f1 * 100);
+                const isAdam = configName.includes('adam_full');
+                html += `
+                    <div class="b-bar-row">
+                        <div class="b-bar-label" title="${escapeHtml(configName)}">${escapeHtml(configName.replace('ablation_', '').replace('baseline_', ''))}</div>
+                        <div class="b-bar-track">
+                            <div class="b-bar-fill ${isAdam ? 'fill-adam' : ''}" style="width: ${pct}%"></div>
+                        </div>
+                        <div class="b-bar-val">${f1.toFixed(3)}</div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        } catch (err) {
+            console.error("Evaluation load error", err);
+            container.innerHTML = `<div class="text-danger" style="padding:20px; font-size:12px;">Failed to load benchmark results</div>`;
+        }
+    }
+
+    async function simulateTime(days) {
+        const btn = document.getElementById('btn-simulate-time');
+        if (!confirm(`Age all memories by ${days} days and trigger lifecycle decay?\n\nYou will be redirected to Memory Dashboard to see the result.`)) return;
+        if (btn) { btn.textContent = 'Simulating...'; btn.disabled = true; }
+        try {
+            const result = await apiRequest('/simulate-time', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: state.userId, days: days }),
+            });
+            if (btn) { btn.textContent = `Fast Forward +${days} Days`; btn.disabled = false; }
+            showToast(`✓ ${result.summary}`, 'success');
+            // Go to dashboard so user sees tier changes
+            switchView('dashboard');
+        } catch (error) {
+            if (btn) { btn.textContent = `Fast Forward +${days} Days`; btn.disabled = false; }
+            showToast(`Simulation failed: ${error.message}`, 'danger');
+        }
+    }
+
+    async function renderMemoryGraph() {
+        const container = document.getElementById('memory-network-graph');
+        if (!container || !window.vis) return;
+        
+        try {
+            const data = await apiRequest(`/graph?user_id=${encodeURIComponent(state.userId)}`);
+            
+            const colorMap = {
+                'WORKING': { background: '#40e0d0', border: '#1fc8b9' },
+                'SHORT_TERM': { background: '#99A9FF', border: '#7c3aed' },
+                'LONG_TERM': { background: '#a78bfa', border: '#8b5cf6' },
+                'ARCHIVE': { background: '#fcd34d', border: '#f59e0b' }
+            };
+
+            const nodes = data.nodes.map(n => ({
+                id: n.id,
+                label: n.label,
+                title: n.title, 
+                color: colorMap[n.group] || { background: '#334155', border: '#475569' },
+                font: { color: '#ffffff', size: 12 },
+                shape: 'dot',
+                size: 15,
+                borderWidth: 2,
+            }));
+            
+            const edges = data.edges.map(e => ({
+                from: e.from,
+                to: e.to,
+                value: e.value,
+                title: e.title,
+                color: { color: 'rgba(255,255,255,0.1)', highlight: 'rgba(56, 189, 248, 0.5)' },
+                smooth: { type: 'continuous' }
+            }));
+
+            const networkData = {
+                nodes: new vis.DataSet(nodes),
+                edges: new vis.DataSet(edges)
+            };
+            const options = {
+                physics: {
+                    solver: 'forceAtlas2Based',
+                    forceAtlas2Based: {
+                        gravitationalConstant: -120, // Increased repulsion to spread nodes
+                        centralGravity: 0.003,      // Reduced inward pull
+                        springLength: 300,          // Longer edges between connected nodes
+                        springConstant: 0.05        // Weaker springs so they can push apart
+                    },
+                    maxVelocity: 50,
+                    minVelocity: 0.1,
+                    timestep: 0.5,
+                    stabilization: { iterations: 200 }
+                },
+                interaction: { hover: true, tooltipDelay: 200, zoomView: true }
+            };
+            new vis.Network(container, networkData, options);
+
+            // Add legend
+            const legend = document.createElement('div');
+            legend.style.position = 'absolute';
+            legend.style.bottom = '16px';
+            legend.style.left = '16px';
+            legend.style.display = 'flex';
+            legend.style.gap = '12px';
+            legend.style.flexWrap = 'wrap';
+            legend.style.zIndex = '10';
+            legend.innerHTML = `
+                <span style="font-size:11px;color:#40e0d0;text-shadow:0 1px 2px rgba(0,0,0,0.8)">● Working</span>
+                <span style="font-size:11px;color:#99A9FF;text-shadow:0 1px 2px rgba(0,0,0,0.8)">● Short-Term</span>
+                <span style="font-size:11px;color:#a78bfa;text-shadow:0 1px 2px rgba(0,0,0,0.8)">● Long-Term</span>
+                <span style="font-size:11px;color:#fcd34d;text-shadow:0 1px 2px rgba(0,0,0,0.8)">● Archive</span>
+            `;
+            container.appendChild(legend);
+
+        } catch (error) {
+            console.error("Graph error:", error);
+            showToast("Failed to load graph data", "danger");
+        }
+    }
+
+    // Export functions to window.ADAM
+    window.ADAM = window.ADAM || {};
+    window.ADAM.simulateTime = simulateTime;
+
+    // =========================================================================
     // Event Listeners Initialization
     // =========================================================================
 
@@ -1173,6 +1429,7 @@
         inspectMemory,
         openTierTransitionModal,
         deleteMemory,
+        simulateTime,
     };
 
     // Initialize application on DOM load

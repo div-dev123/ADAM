@@ -3,7 +3,7 @@
 from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -42,7 +42,7 @@ class BenchmarkDataset:
             "queries": [asdict(q) for q in self.queries],
         }
 
-    def save_json(self, path: Path | str) -> None:
+    def save_json(self, path: Union[Path, str]) -> None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
@@ -61,7 +61,7 @@ class BenchmarkDataset:
         )
 
     @classmethod
-    def load_json(cls, path: Path | str) -> "BenchmarkDataset":
+    def load_json(cls, path: Union[Path, str]) -> "BenchmarkDataset":
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)

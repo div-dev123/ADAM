@@ -63,6 +63,11 @@ class ResetRequest(BaseModel):
     confirm: bool = Field(default=False)
 
 
+class TimeTravelRequest(BaseModel):
+    user_id: str = Field(default="user-1", min_length=1)
+    days: int = Field(ge=1, le=365)
+
+
 def build_storage() -> SQLiteStorage:
     return SQLiteStorage(settings.database_path)
 
@@ -445,6 +450,91 @@ def reset_database(request: ResetRequest):
         raise HTTPException(status_code=400, detail="Confirmation required (confirm: true)")
     app.state.retrieval.storage.reset_database()
     return {"status": "reset", "message": "Research database cleared successfully."}
+
+
+@app.post("/simulate-time")
+def simulate_time(request: TimeTravelRequest):
+    """Artificially age all memories by X days, then run lifecycle pass."""
+    from datetime import datetime as _dt
+    with app.state.retrieval.storage._connect() as conn:
+        conn.execute(
+            f"UPDATE memories SET created_at = datetime(created_at, '-{request.days} days'), "
+            f"last_accessed = datetime(last_accessed, '-{request.days} days') "
+            "WHERE user_id = ?",
+            (request.user_id,)
+        )
+        conn.commit()
+    # Pass a naive UTC now so it matches naive datetimes read from SQLite
+    naive_now = _dt.utcnow()
+    report = app.state.retrieval.run_lifecycle_pass(
+        user_id=request.user_id, dry_run=False, now=naive_now
+    )
+    forgotten = report.get("forgotten", [])
+    transitioned = report.get("transitioned", [])
+    protected = report.get("protected", [])
+    return {
+        "status": "success",
+        "days_aged": request.days,
+        "forgotten_count": len(forgotten),
+        "transitioned_count": len(transitioned),
+        "protected_count": len(protected),
+        "summary": f"Aged {request.days}d: {len(forgotten)} forgotten, {len(transitioned)} moved tiers, {len(protected)} protected"
+    }
+
+
+@app.get("/graph")
+def get_memory_graph(user_id: str = Query(default="user-1")):
+    """Return nodes and edges for visualization."""
+    memories = app.state.retrieval.storage.get_all_memories(user_id=user_id)
+    nodes = []
+    edges = []
+    for m in memories:
+        nodes.append({
+            "id": m.memory_id,
+            "label": m.content[:35] + "..." if len(m.content) > 35 else m.content,
+            "title": m.content,
+            "group": m.tier
+        })
+    
+    if len(memories) > 1:
+        import numpy as np
+        import json
+        embeddings = []
+        valid_m = []
+        for m in memories:
+            if isinstance(m.embedding, str):
+                embeddings.append(np.array(json.loads(m.embedding)))
+                valid_m.append(m)
+            elif m.embedding is not None:
+                embeddings.append(np.array(m.embedding))
+                valid_m.append(m)
+                
+        for i in range(len(valid_m)):
+            for j in range(i + 1, len(valid_m)):
+                norm_i = np.linalg.norm(embeddings[i])
+                norm_j = np.linalg.norm(embeddings[j])
+                if norm_i > 0 and norm_j > 0:
+                    sim = np.dot(embeddings[i], embeddings[j]) / (norm_i * norm_j)
+                    if sim > 0.35:
+                        edges.append({
+                            "from": valid_m[i].memory_id,
+                            "to": valid_m[j].memory_id,
+                            "value": float(sim),
+                            "title": f"Similarity: {sim:.2f}"
+                        })
+    return {"nodes": nodes, "edges": edges}
+
+
+@app.get("/metrics/evaluation")
+def get_evaluation_metrics():
+    """Load and return the latest benchmark results."""
+    import json
+    from pathlib import Path
+    results_path = Path("experiments/results/results.json")
+    if results_path.exists():
+        with open(results_path, "r") as f:
+            return json.load(f)
+    return {"error": "No evaluation results found. Run evaluate.py first."}
 
 
 def memory_to_response(memory):
