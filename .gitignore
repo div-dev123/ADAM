@@ -15,3 +15,5 @@ data/*.db
 htmlcov/
 coverage.xmlexperiments/results/*.csv
 experiments/results/*.json
+app.db
+scratch.py
