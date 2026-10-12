@@ -341,7 +341,7 @@
             renderUserMessageBadges(currentTurn, turnResult.user_memory);
 
             // Append Assistant Message
-            renderAssistantMessage(turnGroup, currentTurn, turnResult.response, turnResult.assistant_memory, turnResult.retrieved_memories);
+            renderAssistantMessage(turnGroup, currentTurn, turnResult.response, turnResult.assistant_memory, turnResult.retrieved_memories, turnResult.context_budget);
 
             // Update Turn Inspector on the right
             renderTurnInspector(currentTurn, message, turnResult);
@@ -459,7 +459,7 @@
         `;
     }
 
-    function renderAssistantMessage(turnGroup, turnId, responseText, assistantMemory, retrievedMemories) {
+    function renderAssistantMessage(turnGroup, turnId, responseText, assistantMemory, retrievedMemories, contextBudget) {
         const assistantRow = document.createElement('div');
         assistantRow.className = 'chat-message-row assistant-row';
 
@@ -500,13 +500,20 @@
                         <div class="details-section-title">Assistant Memory Decision</div>
                         <p style="color: #cbd5e1; margin-bottom: 0.5rem;">${escapeHtml(assistantMemory?.decision_reason || (isStored ? 'Response contained substantive information and was stored.' : 'Boilerplate filtered.'))}</p>
                         <div class="details-section-title">Retrieved Memories for Query Context (${retrievedCount})</div>
+                        ${contextBudget ? `
+                            <div style="font-size:0.72rem; color:#94a3b8; margin-bottom:0.4rem; display:flex; justify-content:space-between; background:rgba(0,0,0,0.2); padding:0.25rem 0.5rem; border-radius:3px;">
+                                <span>Context Budget: <strong>${contextBudget.total_tokens}/${contextBudget.token_budget} tokens</strong></span>
+                                ${contextBudget.discarded_count > 0 ? `<span style="color:#f59e0b;">(${contextBudget.discarded_count} redundant pruned)</span>` : '<span style="color:#10b981;">Optimal</span>'}
+                            </div>
+                        ` : ''}
                         ${retrievedCount > 0 ? retrievedMemories.map(r => `
-                            <div class="details-candidate-item">
-                                <div>
+                            <div class="details-candidate-item" style="flex-direction:column; align-items:flex-start; gap:0.25rem;">
+                                <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                                     <span class="badge ${getTierBadge(r.memory?.tier).class}" style="font-size:0.6rem; padding:0.1rem 0.3rem;">${r.memory?.tier}</span>
-                                    <span>${escapeHtml(r.memory?.content || '')}</span>
+                                    <span style="color:#a855f7; font-family:var(--font-mono); font-size:0.7rem;">Rank Score: ${r.final_score !== undefined ? r.final_score.toFixed(3) : r.similarity}</span>
                                 </div>
-                                <span style="color:#a855f7;">Sim: ${r.similarity}</span>
+                                <div style="color:var(--text-primary); font-size:0.78rem;">${escapeHtml(r.memory?.content || '')}</div>
+                                ${r.selection_reason ? `<div style="font-size:0.68rem; color:#94a3b8; font-style:italic;">${escapeHtml(r.selection_reason)}</div>` : ''}
                             </div>
                         `).join('') : '<div style="color:var(--text-muted);">No relevant memories retrieved.</div>'}
                     </div>
@@ -577,14 +584,21 @@
             <!-- Retrieval Context Block -->
             <div style="margin-bottom: 1rem;">
                 <div class="details-section-title">3. Retrieved Memories for LLM Context (${retrieved.length})</div>
+                ${turnResult.context_budget ? `
+                    <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem; display:flex; justify-content:space-between; background:rgba(0,0,0,0.2); padding:0.3rem 0.5rem; border-radius:3px;">
+                        <span>Context Budget: <strong>${turnResult.context_budget.total_tokens}/${turnResult.context_budget.token_budget} tokens</strong></span>
+                        ${turnResult.context_budget.discarded_count > 0 ? `<span style="color:#f59e0b;">(${turnResult.context_budget.discarded_count} redundant pruned)</span>` : '<span style="color:#10b981;">0 redundant</span>'}
+                    </div>
+                ` : ''}
                 <div style="display:flex; flex-direction:column; gap:0.4rem;">
                     ${retrieved.length > 0 ? retrieved.map(r => `
                         <div style="background: rgba(0,0,0,0.25); padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size:0.75rem;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
                                 <span class="badge ${getTierBadge(r.memory?.tier).class}" style="font-size:0.65rem;">${r.memory?.tier}</span>
-                                <span style="color:#a855f7; font-family:var(--font-mono); font-size:0.7rem;">Cosine Sim: ${r.similarity}</span>
+                                <span style="color:#a855f7; font-family:var(--font-mono); font-size:0.7rem;">Rank Score: ${r.final_score !== undefined ? r.final_score.toFixed(3) : r.similarity}</span>
                             </div>
-                            <div style="color:var(--text-primary); font-size:0.78rem;">${escapeHtml(r.memory?.content || '')}</div>
+                            <div style="color:var(--text-primary); font-size:0.78rem; margin-bottom:0.2rem;">${escapeHtml(r.memory?.content || '')}</div>
+                            ${r.selection_reason ? `<div style="font-size:0.68rem; color:#94a3b8; font-style:italic;">${escapeHtml(r.selection_reason)}</div>` : ''}
                         </div>
                     `).join('') : '<div style="color:var(--text-muted); font-size:0.75rem;">No memory context needed.</div>'}
                 </div>
