@@ -54,21 +54,25 @@ Each configuration is assessed across 8 measurable metrics defined in [`experime
 The evaluation suite operates across two distinct benchmark tiers:
 
 ### Benchmark A: Large-Scale Real-World Multi-Session Dataset (LoCoMo)
-* **Source**: Official Stanford / Snap-Research LoCoMo benchmark (`experiments/data/locomo_benchmark.json`).
+* **Source**: Official Stanford / Snap-Research LoCoMo benchmark ([GitHub: snap-research/locomo](https://github.com/snap-research/locomo) | [Hugging Face](https://huggingface.co/datasets/snap-research/locomo)).
+* **Raw Dataset File**: [`locomo10.json`](https://raw.githubusercontent.com/snap-research/locomo/main/data/locomo10.json) (compiled locally to `experiments/data/locomo_benchmark.json`).
 * **Volume**: **421 conversation turns** spanning **19 distinct sessions** with **198 verified evaluation probes**.
 * **Focus**: Long-term conversational tracking, natural dialogue filler, multi-week human persona updates, and temporal career/location updates.
 
 ### Benchmark B: Canonical Contradiction & Edge-Case Benchmark
-* **Source**: `experiments/benchmark_dataset.json`.
+* **Source**: Local synthetic test suite (`experiments/benchmark_dataset.json`).
 * **Volume**: 14 curated high-density turns with 7 adversarial probe queries.
 * **Focus**: Rapid factual contradictions (location changes: NY $\to$ Seattle; tech stack switches: Rust $\to$ Go), filler greetings ("hi", "cool"), and out-of-scope hallucination probes.
 
 ### Benchmark C: Software Engineering Multi-Turn Trajectory Benchmark (SWE-bench / SWE-agent)
-* **Source**: Real open-source software engineering agent trajectories from `nebius/SWE-agent-trajectories` (`experiments/data/swe_real_benchmark.json`).
-* **Volume**: **168 authentic conversation turns** spanning 3 development phases:
-  - Phase 1: Microservices HTTP Client development (`ithaka/apiron-8`, issue #8) modifying `ServiceCaller.call` for auth pass-through.
-  - Phase 2: IoT Telemetry SDK development (`astarte-platform/astarte-device-sdk-python-98`, issue #98) handling BSON serialization of empty payloads.
+* **Dataset Source**: Nebius SWE-agent Trajectories on Hugging Face ([nebius/SWE-agent-trajectories](https://huggingface.co/datasets/nebius/SWE-agent-trajectories)).
+* **Raw Parquet File**: [`train-00000-of-00012.parquet`](https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00000-of-00012.parquet) (compiled locally via `experiments/prepare_swe_real.py` to `experiments/data/swe_real_benchmark.json`).
+* **Underlying Benchmark & Framework**: [Princeton NLP SWE-bench](https://github.com/princeton-nlp/SWE-bench) and [SWE-agent](https://github.com/SWE-agent/SWE-agent).
+* **Specific Issues & Codebases**:
+  - Phase 1: Microservices HTTP Client ([ithaka/apiron Issue #8](https://github.com/ithaka/apiron/issues/8)) modifying `ServiceCaller.call` for auth pass-through.
+  - Phase 2: IoT Telemetry SDK ([astarte-platform/astarte-device-sdk-python Issue #98](https://github.com/astarte-platform/astarte-device-sdk-python/issues/98)) handling BSON serialization of empty payloads.
   - Phase 3: Architectural refactoring & API deprecations (OAuth2 bearer token migration, TLS MQTT broker switch, pytest migration).
+* **Volume**: **168 authentic conversation turns** across code editing, stack trace analysis, and architectural refactoring.
 * **Focus**: Codebase navigation, exact function/method recall (`def call`, `choose_host`), stack trace debugging, terminal log compression, and deprecation suppression.
 
 ---
