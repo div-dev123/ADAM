@@ -121,8 +121,6 @@ The evaluation suite operates across two distinct benchmark tiers:
   |:---|:---:|:---:|:---:|:---:|:---:|:---:|
   | `adam_full` (Strict Conversational) | 500 | 0.549 | 0.259 | 0.289 | **479** | **79.3% savings** |
   | `adam_full` (Balanced Code SLA) | 1,000 | **0.804** | **0.294** | **0.375** | **790** | **65.9% savings** |
-  | `adam_full` (Extended Technical) | 1,500 | 0.686 | 0.278 | 0.359 | 1,106 | 52.2% savings |
-  | `adam_full` (Deep Inspection) | 2,000 | 0.745 | 0.282 | 0.369 | 1,243 | 46.3% savings |
   | `baseline_memgpt` (Unbudgeted Dump) | $\infty$ | **0.833** | 0.377 | 0.470 | **2,314** *(4.8×)* | Baseline (0%) |
 
   * At a balanced 1,000-token budget, ADAM achieves **0.804 recall** (matching MemGPT's 0.833) while consuming **nearly 3× fewer tokens** (790 vs 2,314), maintaining low latency (28.7ms), and suppressing obsolete code facts.
