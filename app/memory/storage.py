@@ -111,6 +111,23 @@ class SQLiteStorage:
             ).fetchall()
         return [Memory.from_row(tuple(row)) for row in rows]
 
+    def get_memories_by_tiers(self, user_id: str, tiers: list[str], include_superseded: bool = False) -> list[Memory]:
+        """Return memories belonging to one user filtered at the database level by tiers."""
+        if not tiers:
+            return []
+        placeholders = ",".join("?" for _ in tiers)
+        query = f"""SELECT memory_id, user_id, content, embedding, created_at,
+                           last_accessed, access_count, importance_score, tier,
+                           compression_level, updated_at, superseded_by, source_role
+                    FROM memories
+                    WHERE user_id = ? AND tier IN ({placeholders})"""
+        params: list = [user_id] + list(tiers)
+        if not include_superseded:
+            query += " AND (superseded_by IS NULL OR superseded_by = '')"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [Memory.from_row(tuple(row)) for row in rows]
+
     def get_memory(self, memory_id: str) -> Optional[Memory]:
         with self._connect() as connection:
             row = connection.execute(

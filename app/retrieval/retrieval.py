@@ -172,21 +172,43 @@ class RetrievalService:
 
         target_tiers = scope_tiers or drift_result.scope_tiers
 
-        memories = self.storage.get_memories(user_id)
-        if not include_superseded:
-            memories = [m for m in memories if not m.superseded_by]
-
-        # Apply adaptive scope filtering
-        scoped_memories = [m for m in memories if m.tier in target_tiers]
-        if not scoped_memories:
-            self.last_budget_result = None
-            return []
+        # 1. High-Performance SQL Pre-filtering
+        if hasattr(self.storage, "get_memories_by_tiers"):
+            scoped_memories = self.storage.get_memories_by_tiers(
+                user_id, target_tiers, include_superseded=include_superseded
+            )
+        else:
+            memories = self.storage.get_memories(user_id)
+            if not include_superseded:
+                memories = [m for m in memories if not m.superseded_by]
+            scoped_memories = [m for m in memories if m.tier in target_tiers]
 
         search_mode = mode or self.search_mode
-        candidate_k = max(top_k * 4, 20)
-        candidate_pool = self.hybrid_service.search(
-            query, scoped_memories, top_k=candidate_k, mode=search_mode
-        )
+        candidate_k = max(top_k * 3, 15)
+
+        candidate_pool = []
+        if scoped_memories:
+            candidate_pool = self.hybrid_service.search(
+                query, scoped_memories, top_k=candidate_k, mode=search_mode
+            )
+
+        # 2. Adaptive Archival Fallback: If caller did not explicitly fix scope_tiers and scoped query returned zero hits
+        if not candidate_pool and scope_tiers is None and "ARCHIVE" not in target_tiers:
+            if hasattr(self.storage, "get_memories_by_tiers"):
+                archival_mems = self.storage.get_memories_by_tiers(
+                    user_id, ["ARCHIVE"], include_superseded=include_superseded
+                )
+            else:
+                archival_mems = [m for m in self.storage.get_memories(user_id) if m.tier == "ARCHIVE"]
+            if archival_mems:
+                archival_pool = self.hybrid_service.search(
+                    query, archival_mems, top_k=candidate_k, mode=search_mode
+                )
+                candidate_pool.extend(archival_pool)
+
+        if not candidate_pool:
+            self.last_budget_result = None
+            return []
 
         # Multi-signal ranking across 6 signals
         ranked = self.ranker.rank_candidates(candidate_pool, now=now)

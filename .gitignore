@@ -13,7 +13,11 @@ data/*.db
 # Test and coverage output
 .coverage
 htmlcov/
-coverage.xmlexperiments/results/*.csv
-experiments/results/*.json
+coverage.xml
 app.db
 scratch.py
+
+# Evaluation artifacts & large external data
+experiments/data/locomo10.json
+experiments/results/*.csv
+experiments/results/*.json

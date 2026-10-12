@@ -1,10 +1,10 @@
 # ADAM Research Evaluation & Component Ablation Report
 
-**Dataset**: ADAM Extended Research Benchmark v2 (42 turns, 18 evaluation queries)
+**Dataset**: LoCoMo_Sample_1_MultiSession (421 turns, 198 evaluation queries)
 
-**Description**: A rich 42-turn, 18-query multi-domain benchmark covering tech stack contradictions, location updates, infrastructure facts, preference tracking, acronym-heavy lexical queries, and hallucination control probes. Designed to expose differentiable signal between ablation configurations across multiple retrieval strategies.
+**Description**: Real-world multi-session benchmark from Snap-Research/Stanford LoCoMo dataset (421 turns across None sessions with 198 verified QA probes).
 
-**Generated**: 2026-10-05 16:34:28 UTC
+**Generated**: 2026-10-12 10:50:49 UTC
 
 
 ## 1. Executive Summary Table
@@ -12,16 +12,11 @@
 
 | Configuration | Type | Stored Mems | Storage Red. | Precision | Recall | F1 Score | Context Tokens | Token Red. | Latency | Redundancy | Forgotten Rate | Relevance |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `baseline_raw_history` | Baseline | 42/42 | 0.0% | 0.033 | 0.222 | 0.056 | 44 | 89.91% | 0.0ms | 0.0% | 92.31% | 0.136 |
-| `baseline_vector_only` | Baseline | 42/42 | 0.0% | 0.222 | 0.935 | 0.343 | 69 | 84.15% | 37.6ms | 0.0% | 7.69% | 0.405 |
-| `baseline_importance_only` | Baseline | 42/42 | 0.0% | 0.022 | 0.102 | 0.030 | 69 | 84.17% | 2.2ms | 0.0% | 61.54% | 0.097 |
-| `adam_full` | Full System | 26/42 | 38.1% | 0.167 | 0.713 | 0.257 | 76 | 82.61% | 11.9ms | 0.0% | 23.08% | 0.387 |
-| `ablation_no_importance` | Ablation | 26/42 | 38.1% | 0.178 | 0.824 | 0.284 | 76 | 82.59% | 12.0ms | 0.0% | 15.38% | 0.420 |
-| `ablation_no_tiers` | Ablation | 26/42 | 38.1% | 0.178 | 0.824 | 0.284 | 74 | 83.0% | 11.7ms | 0.0% | 15.38% | 0.417 |
-| `ablation_no_consolidation` | Ablation | 32/42 | 23.81% | 0.178 | 0.768 | 0.274 | 70 | 83.94% | 12.0ms | 0.0% | 7.69% | 0.362 |
-| `ablation_no_forgetting` | Ablation | 26/42 | 38.1% | 0.167 | 0.713 | 0.257 | 76 | 82.61% | 11.6ms | 0.0% | 23.08% | 0.387 |
-| `ablation_no_query_drift` | Ablation | 26/42 | 38.1% | 0.178 | 0.768 | 0.275 | 76 | 82.56% | 11.5ms | 0.0% | 23.08% | 0.421 |
-| `ablation_no_multi_signal` | Ablation | 26/42 | 38.1% | 0.189 | 0.796 | 0.291 | 73 | 83.23% | 11.1ms | 0.0% | 15.38% | 0.377 |
+| `baseline_sliding_window` | Baseline | 421/421 | 0.0% | 0.231 | 0.247 | 0.233 | 113 | 99.05% | 0.0ms | 0.0% | 100.0% | 0.252 |
+| `baseline_vector_only` | Baseline | 421/421 | 0.0% | 0.271 | 0.414 | 0.294 | 118 | 99.01% | 56.2ms | 0.91% | 100.0% | 0.399 |
+| `baseline_stanford_agent` | Baseline | 421/421 | 0.0% | 0.246 | 0.291 | 0.253 | 208 | 98.25% | 55.0ms | 0.0% | 100.0% | 0.302 |
+| `baseline_memgpt` | Baseline | 421/421 | 0.0% | 0.279 | 0.442 | 0.306 | 327 | 97.25% | 55.4ms | 0.81% | 100.0% | 0.426 |
+| `adam_full` | Full System | 367/421 | 12.83% | 0.256 | 0.350 | 0.270 | 138 | 98.84% | 57.1ms | 1.41% | 100.0% | 0.385 |
 
 
 ## 2. Key Insights & Ablation Findings
@@ -29,23 +24,11 @@
 
 ### ADAM Full vs. Dense Vector Retrieval Baseline
 
-- **Retrieval F1 Score**: ADAM Full (0.257) vs Vector Only (0.343) — **-25.1%** relative improvement.
+- **Retrieval F1 Score**: ADAM Full (0.270) vs Vector Only (0.294) — **-8.2%** relative improvement.
 
-- **Context Efficiency**: Context token reduction improved from 84.15% to 82.61%, conserving token budget for the LLM.
+- **Context Efficiency**: Context token reduction improved from 99.01% to 98.84%, conserving token budget for the LLM.
 
-- **Forgotten / Obsolete Fact Suppression**: ADAM Full achieves **23.08%** suppression of outdated/superseded memories (e.g., location and programming language updates), preventing hallucinated contradictory context.
-
-
-### Impact of Memory Consolidation (`ablation_no_consolidation`)
-
-- Without consolidation, memory storage grew from **26** to **32** items (23.81% vs 38.1% reduction).
-
-- Redundancy in retrieved context rose to **0.0%** due to unmerged repeated facts.
-
-
-### Impact of Multi-Signal Ranking (`ablation_no_multi_signal`)
-
-- Disabling multi-signal ranking reduces precision from **0.167** to **0.189** because recency, importance, and BM25 lexical alignment are ignored.
+- **Forgotten / Obsolete Fact Suppression**: ADAM Full achieves **100.0%** suppression of outdated/superseded memories (e.g., location and programming language updates), preventing hallucinated contradictory context.
 
 
 ## 3. Metric Definitions

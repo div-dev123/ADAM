@@ -138,9 +138,26 @@ def compute_query_metrics(
                 words_b = set(re.findall(r"\b\w+\b", prev.lower()))
                 union = words_a | words_b
                 jaccard = len(words_a & words_b) / len(union) if union else 0.0
+                
+                # Check lexical Jaccard or semantic similarity if embeddings available
                 if jaccard >= redundancy_threshold or content.strip() == prev.strip():
                     is_dup = True
                     break
+                elif embedding_func is not None:
+                    try:
+                        from app.retrieval.similarity import cosine_similarity
+                        e1 = embedding_func(content)
+                        e2 = embedding_func(prev)
+                        if cosine_similarity(e1, e2) >= 0.75:
+                            is_dup = True
+                            break
+                    except Exception:
+                        pass
+                elif jaccard >= 0.35:
+                    # Sensitive lexical overlap for conversational dialogues
+                    is_dup = True
+                    break
+
             if is_dup:
                 redundant_count += 1
             else:

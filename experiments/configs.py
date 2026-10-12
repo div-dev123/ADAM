@@ -52,7 +52,7 @@ def get_standard_configurations() -> Dict[str, ExperimentConfig]:
 
     configs["baseline_vector_only"] = ExperimentConfig(
         name="baseline_vector_only",
-        description="Dense vector similarity baseline: top-k pure cosine similarity, no metadata signals or drift",
+        description="Dense vector similarity baseline (Naive RAG / Chroma top-k): pure cosine similarity, no metadata signals, tiering, or drift",
         is_baseline=True,
         enable_importance_scoring=False,
         enable_tier_hierarchy=False,
@@ -62,6 +62,52 @@ def get_standard_configurations() -> Dict[str, ExperimentConfig]:
         enable_multi_signal=False,
         enable_hybrid_bm25=False,
         enable_context_budgeting=False,
+        enable_redundancy_removal=False,
+    )
+
+    configs["baseline_sliding_window"] = ExperimentConfig(
+        name="baseline_sliding_window",
+        description="LangChain ConversationBufferWindowMemory baseline: FIFO buffer of K most recent turns, older context permanently lost",
+        is_baseline=True,
+        enable_importance_scoring=False,
+        enable_tier_hierarchy=False,
+        enable_consolidation=False,
+        enable_forgetting=False,
+        enable_query_drift=False,
+        enable_multi_signal=False,
+        enable_hybrid_bm25=False,
+        enable_context_budgeting=False,
+        enable_redundancy_removal=False,
+        top_k=6,
+    )
+
+    configs["baseline_stanford_agent"] = ExperimentConfig(
+        name="baseline_stanford_agent",
+        description="Stanford Generative Agents baseline (Park et al. 2023): 3-signal linear decay (Recency + Importance + Relevance), no tiering or budgeting",
+        is_baseline=True,
+        enable_importance_scoring=True,
+        enable_tier_hierarchy=False,
+        enable_consolidation=False,
+        enable_forgetting=True,
+        enable_query_drift=False,
+        enable_multi_signal=True,
+        enable_hybrid_bm25=False,
+        enable_context_budgeting=False,
+        enable_redundancy_removal=False,
+    )
+
+    configs["baseline_memgpt"] = ExperimentConfig(
+        name="baseline_memgpt",
+        description="MemGPT / Letta OS Agent baseline: Core Memory (Persona/Human block) + Archival Memory (dense vector search), no tier lifecycle",
+        is_baseline=True,
+        enable_importance_scoring=True,
+        enable_tier_hierarchy=False,
+        enable_consolidation=False,
+        enable_forgetting=False,
+        enable_query_drift=False,
+        enable_multi_signal=False,
+        enable_hybrid_bm25=False,
+        enable_context_budgeting=True,
         enable_redundancy_removal=False,
     )
 
