@@ -19,5 +19,8 @@ scratch.py
 
 # Evaluation artifacts & large external data
 experiments/data/locomo10.json
+experiments/data/*.parquet
 experiments/results/*.csv
 experiments/results/*.json
+experiments/results/swe_real/*.csv
+experiments/results/swe_real/*.json
